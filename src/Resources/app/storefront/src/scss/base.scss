@@ -1,9 +1,9 @@
 // Minimalistische Produktkarte: Karten in einer Reihe behalten ihre Equal-Height (visuelle Konsistenz),
-// aber der Inhalt klebt oben — keine erzwungene Streck-Luecke zwischen Bild, Titel und Preis.
+// aber der Inhalt klebt oben — keine erzwungene Streck-Lücke zwischen Bild, Titel und Preis.
 .product-box.box-rc-minimalistic {
     .card-body {
-        // Storefront-Default streckt diesen Block auf die ganze Karten-Hoehe.
-        // Items vertikal stapeln und explizit oben halten — verhindert space-between-aehnliches Spread.
+        // Storefront-Default streckt diesen Block auf die ganze Karten-Höhe.
+        // Items vertikal stapeln und explizit oben halten — verhindert space-between-ähnliches Spread.
         display: flex;
         flex-direction: column;
         justify-content: flex-start;
@@ -11,7 +11,7 @@
     }
 
     .product-image-wrapper {
-        // Storefront-Default `flex-grow: 1` wuerde den Bild-Wrapper auf den ganzen Card-Body-Restplatz aufziehen.
+        // Storefront-Default `flex-grow: 1` würde den Bild-Wrapper auf den ganzen Card-Body-Restplatz aufziehen.
         flex: 0 0 auto;
         margin-bottom: 0.5rem;
     }
@@ -24,8 +24,8 @@
         margin-bottom: 0;
     }
 
-    // Storefront-Default `height: 2.75rem` reserviert Platz fuer einen zweizeiligen Titel —
-    // in der minimalistic-Karte nehmen wir die natuerliche Hoehe.
+    // Storefront-Default `height: 2.75rem` reserviert Platz für einen zweizeiligen Titel —
+    // in der minimalistic-Karte nehmen wir die natürliche Höhe.
     .product-name {
         height: auto;
         margin-bottom: 0.5rem;
@@ -41,7 +41,7 @@
     }
 
     .product-cheapest-price {
-        // Storefront-Default `min-height: 20px; margin-bottom: 32px` — im leeren Zustand ueberfluessig.
+        // Storefront-Default `min-height: 20px; margin-bottom: 32px` — im leeren Zustand überflüssig.
         min-height: 0;
         margin-bottom: 0;
     }

@@ -8,7 +8,7 @@ if (file_exists($pluginAutoloader)) {
     require_once $pluginAutoloader;
 }
 
-// Im Shopware-Kontext zusaetzlich den Shopware-Autoloader einhaengen
+// Im Shopware-Kontext zusätzlich den Shopware-Autoloader einhängen
 $shopwareAutoloader = dirname(__DIR__, 4) . '/vendor/autoload.php';
 if (file_exists($shopwareAutoloader)) {
     require_once $shopwareAutoloader;

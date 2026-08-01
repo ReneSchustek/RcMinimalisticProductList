@@ -95,7 +95,7 @@ final class BoxTemplateContractTest extends TestCase
         self::assertMatchesRegularExpression(
             $pattern,
             $content,
-            sprintf('Block "%s" muss leer ueberschrieben sein, sonst greift das Verstecken nicht.', $blockName),
+            sprintf('Block "%s" muss leer überschrieben sein, sonst greift das Verstecken nicht.', $blockName),
         );
     }
 

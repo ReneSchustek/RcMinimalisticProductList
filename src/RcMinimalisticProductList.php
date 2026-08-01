@@ -22,14 +22,14 @@ final class RcMinimalisticProductList extends Plugin
         $installer = $this->getCustomFieldsInstaller();
         $installer->install($installContext->getContext());
         // Relation gleich mit anlegen, damit auch der keepUserData-Reinstall-Pfad
-        // (bei dem activate() nicht erneut feuert) die Kategorie-Bindung erhaelt.
+        // (bei dem activate() nicht erneut feuert) die Kategorie-Bindung erhält.
         $installer->addRelations($installContext->getContext());
     }
 
     public function update(UpdateContext $updateContext): void
     {
         // Label-/Config-/Relation-Drift bestehender Installationen beim Plugin-Update
-        // abgleichen — der ID-Aufloesungs-Code im Installer ist re-run-sicher.
+        // abgleichen — der ID-Auflösungs-Code im Installer ist re-run-sicher.
         $installer = $this->getCustomFieldsInstaller();
         $installer->install($updateContext->getContext());
         $installer->addRelations($updateContext->getContext());
@@ -49,7 +49,7 @@ final class RcMinimalisticProductList extends Plugin
         $this->getCustomFieldsInstaller()->addRelations($activateContext->getContext());
     }
 
-    // Waehrend install()/activate() sind plugin-eigene Services noch nicht im DI-Container.
+    // Während install()/activate() sind plugin-eigene Services noch nicht im DI-Container.
     private function getCustomFieldsInstaller(): CustomFieldsInstaller
     {
         $container = $this->container;

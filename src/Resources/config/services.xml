@@ -15,7 +15,7 @@
         </service>
 
         <!--
-            CustomFieldsInstaller wird bewusst NICHT als Service registriert: er laeuft nur in
+            CustomFieldsInstaller wird bewusst NICHT als Service registriert: er läuft nur in
             den Lifecycle-Methoden (install/update/activate/uninstall), wo plugin-eigene Services
             nicht im DI-Container sind. Er wird dort direkt mit den Core-Repositories instanziiert.
         -->
