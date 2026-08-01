@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/shopware/platform/trunk/src/Core/System/SystemConfig/Schema/config.xsd">
+
+    <card>
+        <title>Geltungsbereich</title>
+        <title lang="en-GB">Scope</title>
+
+        <input-field type="single-select">
+            <name>scope</name>
+            <label>Wo gilt das minimalistische Layout?</label>
+            <label lang="en-GB">Where does the minimalistic layout apply?</label>
+            <defaultValue>categories</defaultValue>
+            <options>
+                <option>
+                    <id>categories</id>
+                    <name>Einzelne Kategorien</name>
+                    <name lang="en-GB">Selected categories</name>
+                </option>
+                <option>
+                    <id>all</id>
+                    <name>Alle Seiten</name>
+                    <name lang="en-GB">All pages</name>
+                </option>
+                <option>
+                    <id>off</id>
+                    <name>Aus</name>
+                    <name lang="en-GB">Off</name>
+                </option>
+            </options>
+            <helpText>„Einzelne Kategorien" wertet das Zusatzfeld „Minimalistische Produktliste anzeigen" an der jeweiligen Kategorie aus — die Startseite gehört dabei zur Navigations-Wurzel des Verkaufskanals. „Alle Seiten" schaltet das Layout überall ein, auch für Produkt-Slider auf der Startseite und Cross-Selling auf Produktseiten.</helpText>
+            <helpText lang="en-GB">"Selected categories" evaluates the custom field "Show minimalistic product list" on each category; the home page belongs to the sales channel's navigation root. "All pages" enables the layout everywhere, including product sliders on the home page and cross-selling on product pages.</helpText>
+        </input-field>
+    </card>
+</config>

@@ -1,0 +1,9 @@
+/vendor/
+/node_modules/
+/.idea/
+/.phpunit.cache/
+/var/
+/composer.lock
+
+# composer.lock — Library-Plugins liefern keinen Lock mit
+composer.lock

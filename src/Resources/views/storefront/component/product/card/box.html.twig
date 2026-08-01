@@ -1,0 +1,21 @@
+{% sw_extends '@Storefront/storefront/component/product/card/box.html.twig' %}
+
+{# Setzt das Sub-Layout, sobald der Subscriber das Zusatzfeld positiv meldet. Der Standard-Dispatcher
+   in component_product_box_include inkludiert dann box-rc-minimalistic.html.twig.
+
+   Gefragt wird zuerst der Request, dann die Seite. Das ist kein Gürtel-und-Hosenträger, sondern
+   nötig: Beim Nachladen über /widgets/cms/navigation/{id} -- also bei jedem Filter- und
+   Seitenwechsel -- steht hier weder `page` noch das Listing-Ergebnis zur Verfügung. Wer sich nur
+   auf die Seite verließ, bekam beim Blättern wieder Standard-Kacheln. Der Request ist in beiden
+   Zusammenhängen da; die Seite bleibt als Rückfall für Vorlagen, die außerhalb eines
+   Listing-Requests rendern. #}
+{% block component_product_box_include %}
+    {% set rcMinimalisticActive = app.request.attributes.get('rcMinimalisticLayoutActive')
+        ?? (page.extensions.rcMinimalisticLayout.active ?? false) %}
+
+    {% if rcMinimalisticActive %}
+        {% set layout = 'rc-minimalistic' %}
+    {% endif %}
+
+    {{ parent() }}
+{% endblock %}
