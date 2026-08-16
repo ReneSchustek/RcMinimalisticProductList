@@ -31,11 +31,17 @@ Funktioniert sowohl beim initialen Seitenaufruf als auch beim AJAX-Reload bei Fi
 
 ## Installation
 
+Das Plugin gehört als Ordner `custom/plugins/RcMinimalisticProductList` in die Shopware-Installation. Übertragen wird er von Hand — per FTP in dieses Verzeichnis kopieren; ein Composer-Paket gibt es nicht. Danach registriert Shopware ihn über die folgenden Befehle:
+
+Als Archiv geht es auch ohne FTP: In der Administration unter **Erweiterungen → Meine Erweiterungen → Erweiterung hochladen** nimmt Shopware eine ZIP-Datei entgegen und legt sie selbst an die richtige Stelle; auf der Konsole tut `plugin:zip-import` dasselbe. Danach folgen dieselben Schritte wie unten. Wer das Archiv unter macOS packt, entfernt vorher den Ordner `__MACOSX` — sonst weist Shopware die Datei ab.
+
 ```bash
 php bin/console plugin:refresh
 php bin/console plugin:install --activate RcMinimalisticProductList
 php bin/console cache:clear
 ```
+
+**Aktualisierungen laufen denselben Weg.** Den neuen Ordner per FTP über den alten legen, danach `plugin:refresh` und `plugin:update RcMinimalisticProductList`. Eine Aktualisierung von selbst gibt es nicht — ohne Composer-Paket und ohne Shopware-Store bleibt sie Sache des Betreibers. Vor einem Sprung über eine Hauptversion gehört ein Datenbank-Abzug dazu.
 
 ---
 
@@ -115,4 +121,6 @@ composer quality   # cs-check + phpstan + test
 
 Entwickelt von [Ruhrcoder](https://ruhrcoder.de)
 
-<!-- TRIAGE-WORKFLOW: auto-managed by triage-deploy.ps1 -->
+## Lizenz
+
+MIT — siehe [LICENSE](LICENSE).
