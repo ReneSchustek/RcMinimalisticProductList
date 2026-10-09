@@ -1,3 +1,6 @@
+includes:
+    - vendor/shopwarelabs/phpstan-shopware/rules.neon
+
 parameters:
     level: 8
     paths:
@@ -7,4 +10,14 @@ parameters:
         - vendor
     bootstrapFiles:
         - vendor/autoload.php
-    ignoreErrors: []
+    ignoreErrors:
+        # In Tests gibt es keinen Aufrufer, aus dem sich ein Kontext ableiten ließe.
+        -
+            message: '#Do not use Shopware\\Core\\Framework\\Context::createDefaultContext#'
+            path: tests/*
+
+        # Der Aufruf steht im Kopf der Schleife und läuft genau einmal — die Regel prüft
+        # die Verschachtelung, nicht den Ablauf.
+        -
+            message: '#EntityRepository method calls are not allowed within loops#'
+            path: src/Service/CustomFieldsInstaller.php

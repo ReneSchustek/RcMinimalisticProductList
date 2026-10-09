@@ -11,6 +11,7 @@ use Shopware\Core\Content\Product\Events\ProductListingResultEvent;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\Routing\KernelListenerPriorities;
 use Shopware\Core\Framework\Struct\ArrayStruct;
 use Shopware\Core\Framework\Struct\Struct;
 use Shopware\Core\PlatformRequest;
@@ -68,7 +69,11 @@ final class ListingLayoutSubscriber implements EventSubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [
-            KernelEvents::CONTROLLER => 'onController',
+            // Direkt nach der Kontextauflösung des Kerns (Rang -10). Mit dem Standardrang 0 lief der
+            // Zuhörer davor, fand keinen Verkaufskanal-Kontext und entschied nichts. Beim Seitenaufruf
+            // fiel das nicht auf, weil die Vorlage auf die Erweiterung an der Seite zurückfällt; beim
+            // Nachladen gibt es keine Seite, und Blättern zeigte Standard-Kacheln.
+            KernelEvents::CONTROLLER => ['onController', KernelListenerPriorities::KERNEL_CONTROLLER_EVENT_CONTEXT_RESOLVE_POST],
             GenericPageLoadedEvent::class => 'onGenericPageLoaded',
             NavigationPageLoadedEvent::class => 'onNavigationPageLoaded',
             ProductListingResultEvent::class => 'onListingResult',
@@ -172,6 +177,7 @@ final class ListingLayoutSubscriber implements EventSubscriberInterface
     {
         $category = $this->categoryRepository
             ->search(new Criteria([$navigationId]), $context)
+            ->getEntities()
             ->first();
 
         return $category instanceof CategoryEntity ? $category : null;

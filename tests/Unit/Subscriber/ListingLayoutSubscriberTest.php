@@ -16,6 +16,7 @@ use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
+use Shopware\Core\Framework\Routing\KernelListenerPriorities;
 use Shopware\Core\Framework\Struct\ArrayStruct;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
@@ -24,6 +25,7 @@ use Shopware\Storefront\Page\Navigation\NavigationPage;
 use Shopware\Storefront\Page\Navigation\NavigationPageLoadedEvent;
 use Shopware\Storefront\Page\Page;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpKernel\KernelEvents;
 
 final class ListingLayoutSubscriberTest extends TestCase
 {
@@ -39,6 +41,21 @@ final class ListingLayoutSubscriberTest extends TestCase
 
         self::assertArrayHasKey(GenericPageLoadedEvent::class, $events);
         self::assertSame('onGenericPageLoaded', $events[GenericPageLoadedEvent::class]);
+    }
+
+    /**
+     * Was: Rang des Zuhörers am Controller-Ereignis.
+     * Warum: Vor der Kontextauflösung des Kerns fehlt der Verkaufskanal, die Entscheidung fiel aus,
+     *        und beim Blättern einer markierten Kategorie kamen Standard-Kacheln.
+     * Erwartet: Der Rang liegt unter dem der Kontextauflösung, der Zuhörer läuft also danach.
+     */
+    public function testTheControllerListenerRunsAfterTheContextIsResolved(): void
+    {
+        $listener = ListingLayoutSubscriber::getSubscribedEvents()[KernelEvents::CONTROLLER];
+
+        self::assertIsArray($listener);
+        self::assertSame('onController', $listener[0]);
+        self::assertLessThan(KernelListenerPriorities::KERNEL_CONTROLLER_EVENT_CONTEXT_RESOLVE, $listener[1]);
     }
 
     public function testOnNavigationPageLoadedWithActiveCustomFieldAddsPageExtension(): void

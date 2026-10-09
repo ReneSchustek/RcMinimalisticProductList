@@ -14,7 +14,6 @@ use Shopware\Core\System\CustomField\Aggregate\CustomFieldSet\CustomFieldSetColl
 use Shopware\Core\System\CustomField\Aggregate\CustomFieldSet\CustomFieldSetEntity;
 use Shopware\Core\System\CustomField\Aggregate\CustomFieldSetRelation\CustomFieldSetRelationCollection;
 use Shopware\Core\System\CustomField\CustomFieldCollection;
-use Shopware\Core\System\CustomField\CustomFieldEntity;
 use Shopware\Core\System\CustomField\CustomFieldTypes;
 
 final class CustomFieldsInstaller
@@ -26,9 +25,9 @@ final class CustomFieldsInstaller
         'name' => self::CUSTOM_FIELDSET_NAME,
         'config' => [
             'label' => [
-                'en-GB' => 'Show minimalistic productlist',
-                'de-DE' => 'Minimalistische Produktliste anzeigen',
-                Defaults::LANGUAGE_SYSTEM => 'Show minimalistic productlist',
+                'en-GB' => 'Minimalistic Product List',
+                'de-DE' => 'Minimalistische Produktliste',
+                Defaults::LANGUAGE_SYSTEM => 'Minimalistic Product List',
             ],
             'translated' => true,
         ],
@@ -130,7 +129,7 @@ final class CustomFieldsInstaller
         $criteria->addFilter(new EqualsFilter('name', self::CUSTOM_FIELDSET_NAME));
         $criteria->addAssociation('relations');
 
-        $entity = $this->customFieldSetRepository->search($criteria, $context)->first();
+        $entity = $this->customFieldSetRepository->search($criteria, $context)->getEntities()->first();
 
         return $entity instanceof CustomFieldSetEntity ? $entity : null;
     }
@@ -172,13 +171,8 @@ final class CustomFieldsInstaller
 
         $idByName = [];
         foreach ($this->customFieldRepository->search($criteria, $context)->getEntities() as $entity) {
-            if (!$entity instanceof CustomFieldEntity) {
-                continue;
-            }
-            $entityName = $entity->getName();
-            if (is_string($entityName) && $entityName !== '') {
-                $idByName[$entityName] = $entity->getId();
-            }
+            // Der Name ist laut Typangabe ein Text; eine Prüfung darauf kann nicht fehlschlagen.
+            $idByName[$entity->getName()] = $entity->getId();
         }
 
         if ($idByName === []) {

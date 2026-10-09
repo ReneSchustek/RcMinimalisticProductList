@@ -48,7 +48,9 @@ spl_autoload_register(static function (string $class): void {
  */
 $shopwareRoot = null;
 foreach ([getcwd(), \dirname(__DIR__, 4)] as $candidate) {
-    if (\is_string($candidate) && $candidate !== '' && is_file($candidate . '/config/bundles.php')) {
+    // `getcwd()` kann false liefern — die Textprüfung bleibt. Ein leerer Text kann dabei nicht
+    // entstehen, deshalb entfällt der Vergleich darauf.
+    if (\is_string($candidate) && is_file($candidate . '/config/bundles.php')) {
         $shopwareRoot = $candidate;
         break;
     }

@@ -1,5 +1,48 @@
 # Changelog
 
+## [1.3.5] - 2026-10-09 — Blättern bleibt schlank, die Zusatzfelder heißen wie die Erweiterung
+
+### Behoben
+
+- **Beim Blättern und Filtern einer markierten Kategorie kamen Standard-Kacheln.** Die Entscheidung
+  fiel, bevor Shopware den Verkaufskanal kannte; beim Seitenaufruf sprang die Vorlage ein, beim
+  Nachladen gab es nichts, worauf sie zurückfallen konnte. Sie fällt jetzt direkt danach. Betroffen
+  war der Geltungsbereich „nur markierte Kategorien“ in Shops, in denen keine andere Erweiterung den
+  Verkaufskanal früher bereitstellt.
+
+### Geändert
+
+- Unter „Zusatzfelder“ an der Kategorie stand als Überschrift „Minimalistische Produktliste anzeigen“ — derselbe Wortlaut wie der Schalter darunter. Die Überschrift heißt jetzt wie die Erweiterung: „Minimalistische Produktliste“.
+
+## [1.3.4] - 2026-08-27 — Gleich hohe Kacheln, auch wenn eine Preiszeile fehlt
+
+### Behoben
+
+- **Im Slider standen Kacheln unterschiedlicher Höhe nebeneinander** — auf einer Kategorieseite
+  gemessen: 337, 362 und 382 Pixel bei 18 Kacheln. Der Unterschied kam aus zwei Zeilen des
+  Preisblocks, die es geben kann oder nicht: die Variantenzeile („Varianten ab …") und der
+  Nettopreis. Shopware reserviert für die Variantenzeile von Haus aus Platz; diese Kachel hatte
+  die Reservierung zusammen mit einem zu großen Abstand entfernt. Jetzt hält der Preisblock
+  seinen Platz frei, abgeleitet aus Zeilenzahl und Zeilenhöhe — die Spanne über 18 Kacheln liegt
+  bei **0 Pixeln**.
+
+## [1.3.3] - 2026-08-10 — Vorbereitet auf die nächste Shopware-Hauptversion
+
+### Geändert
+
+- **Vorbereitung auf die nächste Shopware-Hauptversion.** Der Zugriff auf Suchergebnisse folgt der Schreibweise, die Shopware 6.8 verlangt. Am Verhalten ändert sich nichts.
+
+## [1.3.2] - 2026-08-03 — Gleich hohe Kacheln, unabhängig von der Namenslänge
+
+Im Produkt-Slider sprang die Kachelhöhe: Ein Artikel, dessen Name in eine Zeile passte, stand
+22 Pixel flacher als seine Nachbarn.
+
+**Ursache:** Der Name war nach oben auf zwei Zeilen begrenzt, nach unten aber auf nichts. Ein
+einzeiliger Name belegte deshalb die halbe Höhe. Er belegt jetzt immer zwei Zeilen.
+
+Zeilenzahl, Zeilenhöhe und Mindesthöhe stehen an einer Stelle — vorher hätten sie beim nächsten
+Schriftwechsel auseinanderlaufen können, ohne dass jemand die Verbindung sieht.
+
 ## [1.3.1] - 2026-07-30 (Layout bleibt beim Blättern und Filtern erhalten)
 
 > **Deployment:** `php bin/console plugin:refresh && php bin/console plugin:update RcMinimalisticProductList && php bin/console cache:clear`.

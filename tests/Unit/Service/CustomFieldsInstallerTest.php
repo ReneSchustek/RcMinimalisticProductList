@@ -53,7 +53,7 @@ final class CustomFieldsInstallerTest extends TestCase
         $existingSet->setId('set-id-existing');
 
         $setResult = $this->createMock(EntitySearchResult::class);
-        $setResult->method('first')->willReturn($existingSet);
+        $setResult->method('getEntities')->willReturn(new CustomFieldSetCollection([$existingSet]));
 
         $existingField = new CustomFieldEntity();
         $existingField->setId('field-id-existing');
@@ -91,7 +91,7 @@ final class CustomFieldsInstallerTest extends TestCase
         $existingSet->setRelations(new CustomFieldSetRelationCollection([$existingRelation]));
 
         $setResult = $this->createMock(EntitySearchResult::class);
-        $setResult->method('first')->willReturn($existingSet);
+        $setResult->method('getEntities')->willReturn(new CustomFieldSetCollection([$existingSet]));
 
         $this->setRepository = $this->createMock(EntityRepository::class);
         $this->setRepository->method('search')->willReturn($setResult);
@@ -116,7 +116,7 @@ final class CustomFieldsInstallerTest extends TestCase
         // Keine Relations gesetzt → null.
 
         $setResult = $this->createMock(EntitySearchResult::class);
-        $setResult->method('first')->willReturn($existingSet);
+        $setResult->method('getEntities')->willReturn(new CustomFieldSetCollection([$existingSet]));
 
         $this->setRepository = $this->createMock(EntityRepository::class);
         $this->setRepository->method('search')->willReturn($setResult);
@@ -181,7 +181,7 @@ final class CustomFieldsInstallerTest extends TestCase
     private function emptySetSearchResult(): EntitySearchResult&MockObject
     {
         $result = $this->createMock(EntitySearchResult::class);
-        $result->method('first')->willReturn(null);
+        $result->method('getEntities')->willReturn(new CustomFieldSetCollection());
 
         return $result;
     }
