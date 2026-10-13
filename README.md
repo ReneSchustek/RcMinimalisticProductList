@@ -1,18 +1,18 @@
 ﻿# RcMinimalisticProductList
 
-Shopware 6 Plugin — schaltet ein minimalistisches Produktlisten-Layout ein: für den ganzen Shop oder für einzelne Kategorien.
+Shopware-6-Plugin, das ein minimalistisches Produktlisten-Layout einschaltet, für den ganzen Shop oder für einzelne Kategorien.
 
 ---
 
 ## Was das Plugin macht
 
-Shopware-Produktlistings haben ein festes Layout, das sich nur über Theme-Änderungen umstellen lässt — und dann global gilt. Dieses Plugin blendet in den Produktkacheln Beschreibung, Varianten-Merkmale, Bewertung und Aktions-Button aus, sodass nur Bild, Titel und Preis bleiben.
+Shopware-Produktlistings haben ein festes Layout, das sich nur über Theme-Änderungen umstellen lässt, und dann gilt es global. Dieses Plugin blendet in den Produktkacheln Beschreibung, Varianten-Merkmale, Bewertung und Aktions-Button aus, sodass nur Bild, Titel und Preis bleiben.
 
 Wo das gilt, bestimmt die Plugin-Einstellung **Geltungsbereich** (je Verkaufskanal):
 
 | Geltungsbereich | Wirkung |
 |---|---|
-| **Einzelne Kategorien** (Standard) | Nur Kategorien, an denen das Zusatzfeld `rc_show_minimalistic_productlist` gesetzt ist. Die Startseite gehört dabei zur Navigations-Wurzel des Verkaufskanals — wer sie umstellen will, setzt das Feld dort. |
+| **Einzelne Kategorien** (Standard) | Nur Kategorien, an denen das Zusatzfeld `rc_show_minimalistic_productlist` gesetzt ist. Die Startseite gehört dabei zur Navigations-Wurzel des Verkaufskanals. Wer sie umstellen will, setzt das Feld dort. |
 | **Alle Seiten** | Überall, ohne Zusatzfeld: Kategorielistings, Produkt-Slider auf der Startseite, Cross-Selling auf Produktseiten, Suche. |
 | **Aus** | Das Plugin ändert nichts. |
 
@@ -31,9 +31,9 @@ Funktioniert sowohl beim initialen Seitenaufruf als auch beim AJAX-Reload bei Fi
 
 ## Installation
 
-Das Plugin gehört als Ordner `custom/plugins/RcMinimalisticProductList` in die Shopware-Installation. Übertragen wird er von Hand — per FTP in dieses Verzeichnis kopieren; ein Composer-Paket gibt es nicht. Danach registriert Shopware ihn über die folgenden Befehle:
+Das Plugin gehört als Ordner `custom/plugins/RcMinimalisticProductList` in die Shopware-Installation. Übertragen wird er von Hand per FTP in dieses Verzeichnis, ein Composer-Paket gibt es nicht. Danach registriert Shopware ihn über die folgenden Befehle:
 
-Als Archiv geht es auch ohne FTP: In der Administration unter **Erweiterungen → Meine Erweiterungen → Erweiterung hochladen** nimmt Shopware eine ZIP-Datei entgegen und legt sie selbst an die richtige Stelle; auf der Konsole tut `plugin:zip-import` dasselbe. Danach folgen dieselben Schritte wie unten. Wer das Archiv unter macOS packt, entfernt vorher den Ordner `__MACOSX` — sonst weist Shopware die Datei ab.
+Als Archiv geht es auch ohne FTP: In der Administration unter **Erweiterungen → Meine Erweiterungen → Erweiterung hochladen** nimmt Shopware eine ZIP-Datei entgegen und legt sie selbst an die richtige Stelle; auf der Konsole tut `plugin:zip-import` dasselbe. Danach folgen dieselben Schritte wie unten. Wer das Archiv unter macOS packt, entfernt vorher den Ordner `__MACOSX`, sonst weist Shopware die Datei ab.
 
 ```bash
 php bin/console plugin:refresh
@@ -41,15 +41,15 @@ php bin/console plugin:install --activate RcMinimalisticProductList
 php bin/console cache:clear
 ```
 
-**Aktualisierungen laufen denselben Weg.** Den neuen Ordner per FTP über den alten legen, danach `plugin:refresh` und `plugin:update RcMinimalisticProductList`. Eine Aktualisierung von selbst gibt es nicht — ohne Composer-Paket und ohne Shopware-Store bleibt sie Sache des Betreibers. Vor einem Sprung über eine Hauptversion gehört ein Datenbank-Abzug dazu.
+**Aktualisierungen laufen denselben Weg.** Den neuen Ordner per FTP über den alten legen, danach `plugin:refresh` und `plugin:update RcMinimalisticProductList`. Eine Aktualisierung von selbst gibt es nicht: Ohne Composer-Paket und ohne Shopware-Store bleibt sie Sache des Betreibers. Vor einem Sprung über eine Hauptversion gehört ein Datenbank-Abzug dazu.
 
 ---
 
 ## Konfiguration
 
-**Geltungsbereich** — Admin unter **Erweiterungen → Meine Erweiterungen → RcMinimalisticProductList → Konfiguration**, je Verkaufskanal einstellbar. Standard ist „Einzelne Kategorien".
+**Geltungsbereich:** Admin unter **Erweiterungen → Meine Erweiterungen → RcMinimalisticProductList → Konfiguration**, je Verkaufskanal einstellbar. Standard ist „Einzelne Kategorien".
 
-**Einzelne Kategorie** — Admin unter **Kategorien → [Kategorie] → Individuelle Felder**:
+**Einzelne Kategorie:** Admin unter **Kategorien → [Kategorie] → Individuelle Felder**:
 
 | Feld | Beschreibung |
 |------|-------------|
@@ -57,7 +57,7 @@ php bin/console cache:clear
 
 Für die Startseite ist die zuständige Kategorie die Navigations-Wurzel des Verkaufskanals (oft „Hauptkategorien").
 
-Das Zusatzfeld **vererbt sich nicht** auf Unterkategorien: Es wirkt genau an der Kategorie, an der es gesetzt ist. Wer eine ganze Baumebene reduziert darstellen will, setzt es an jeder Kategorie — oder stellt den Geltungsbereich auf „Alle Seiten".
+Das Zusatzfeld **vererbt sich nicht** auf Unterkategorien: Es wirkt genau an der Kategorie, an der es gesetzt ist. Wer eine ganze Baumebene reduziert darstellen will, setzt es an jeder Kategorie oder stellt den Geltungsbereich auf „Alle Seiten".
 
 ---
 
@@ -65,23 +65,23 @@ Das Zusatzfeld **vererbt sich nicht** auf Unterkategorien: Es wirkt genau an der
 
 ### RcAbTesting
 
-Beide Plugins können dieselbe Listing-Seite betreffen, geraten sich aber nicht ins Gehege — sie
-arbeiten in verschiedene Richtungen:
+Beide Plugins können dieselbe Listing-Seite betreffen, geraten sich aber nicht ins Gehege, weil sie
+in verschiedene Richtungen arbeiten:
 
 - **Dieses Plugin schreibt.** Es legt die Entscheidung an zwei Stellen ab: als Erweiterung
   `rcMinimalisticLayout` mit dem Feld `active` an Seite und Listing-Ergebnis, und zusätzlich als
-  Request-Attribut `rcMinimalisticLayoutActive`. Das Template liest den Request zuerst — beim
+  Request-Attribut `rcMinimalisticLayoutActive`. Das Template liest den Request zuerst, denn beim
   Nachladen über `/widgets/cms/navigation/{id}` (jeder Filter- und Seitenwechsel) steht die Seite
   dort nämlich nicht zur Verfügung.
 - **RcAbTesting liest nicht mit und schreibt nichts.** Es stellt Varianten über die
-  Twig-Funktionen `ab_variant()`, `ab_variant_config()` und `ab_switch()` bereit — das Template
+  Twig-Funktionen `ab_variant()`, `ab_variant_config()` und `ab_switch()` bereit. Das Template
   fragt die Variante ab, kein Subscriber setzt ein Layout um. Es gibt heute auch keinen
   Frontend-Schalter für Listings; die vorhandenen betreffen Checkout-Darstellung und
   Versandkosten-Hinweis.
 
 Daraus folgt: **Ein Subscriber-Wettlauf ist ausgeschlossen**, eine Prioritäts-Absprache erübrigt
 sich. Soll das minimalistische Layout einmal als A/B-Variante laufen, gehört die Entscheidung ins
-Template, nicht in einen zweiten Subscriber — etwa so:
+Template, nicht in einen zweiten Subscriber, etwa so:
 
 ```twig
 {% set minimalistisch = app.request.attributes.get('rcMinimalisticLayoutActive')
@@ -91,11 +91,11 @@ Template, nicht in einen zweiten Subscriber — etwa so:
 {% endif %}
 ```
 
-Die Variante gewinnt damit bewusst gegen das Zusatzfeld — sonst wären Kategorien mit gesetztem
+Die Variante gewinnt damit bewusst gegen das Zusatzfeld. Sonst wären Kategorien mit gesetztem
 Feld dauerhaft aus dem Test heraus und das Ergebnis wäre verzerrt.
 
 **Nicht abgedeckt:** ein Integration-Test für dieses Zusammenspiel. Er braucht auf beiden Seiten
-etwas, das es noch nicht gibt — einen Listing-Schalter in RcAbTesting und die Template-Abfrage hier.
+etwas, das es noch nicht gibt: einen Listing-Schalter in RcAbTesting und die Template-Abfrage hier.
 Sobald der Schalter existiert, ist dieser Abschnitt der Ort, an dem nachgezogen wird.
 
 ---
@@ -123,4 +123,4 @@ Entwickelt von [Ruhrcoder](https://ruhrcoder.de)
 
 ## Lizenz
 
-MIT — siehe [LICENSE](LICENSE).
+MIT, siehe [LICENSE](LICENSE).
