@@ -147,15 +147,17 @@ final class ListingLayoutSubscriber implements EventSubscriberInterface
 
     /**
      * Produktseite: Querverkauf und Produktschieber zeigen dieselben Kacheln wie das Listing der Kategorie, zu der der
-     * Artikel gehört (seine SEO-Kategorie). Ohne das kamen dort Standard-Kacheln, weil die Seite keine `navigationId`
-     * trägt und `onController` nichts entschied.
+     * Artikel gehört (seine SEO-Kategorie). Ohne diesen Zuhörer kämen dort Standard-Kacheln, weil die Seite keine
+     * `navigationId` trägt und `onController` im Kategorie-Modus nichts entscheidet.
      */
     public function onProductPageLoaded(ProductPageLoadedEvent $event): void
     {
         $salesChannelId = $event->getSalesChannelContext()->getSalesChannelId();
+        // Die SEO-Kategorie zählt nur im Kategorie-Modus; sonst entscheidet allein der Geltungsbereich.
         $category = $this->decision->requiresCategory($salesChannelId) ? $event->getPage()->getProduct()->getSeoCategory() : null;
         $active = $this->decision->isActiveFor($category instanceof CategoryEntity ? $category : null, $salesChannelId);
 
+        // Die Produkt-Box liest nur den Request-Wert; die Erweiterung an der Seite ist für andere Plugins.
         $event->getRequest()->attributes->set(self::REQUEST_ATTRIBUTE, $active);
         $this->addLayoutFlag($event->getPage(), $active);
     }
