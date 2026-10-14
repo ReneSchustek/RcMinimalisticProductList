@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.0] - 2026-10-14 — Minimalliste auch im Querverkauf der Produktseite
+
+> **Deployment:** `plugin:update RcMinimalisticProductList`, `cache:clear`.
+
+### Neu
+
+- **Produktseite:** Querverkauf und Produktschieber zeigen die schlanken Kacheln, wenn die Kategorie des Artikels
+  (seine SEO-Kategorie) sie zeigt; im Geltungsbereich „alle" immer. Bisher kamen dort Standard-Kacheln, weil die
+  Entscheidung nur bei Kategorie-Aufrufen fiel.
+
 ## [1.3.5] - 2026-10-09 — Blättern bleibt schlank, die Zusatzfelder heißen wie die Erweiterung
 
 ### Behoben

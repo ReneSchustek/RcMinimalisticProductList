@@ -18,6 +18,7 @@ use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Storefront\Page\GenericPageLoadedEvent;
 use Shopware\Storefront\Page\Navigation\NavigationPageLoadedEvent;
+use Shopware\Storefront\Page\Product\ProductPageLoadedEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpKernel\Event\ControllerEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
@@ -76,6 +77,7 @@ final class ListingLayoutSubscriber implements EventSubscriberInterface
             KernelEvents::CONTROLLER => ['onController', KernelListenerPriorities::KERNEL_CONTROLLER_EVENT_CONTEXT_RESOLVE_POST],
             GenericPageLoadedEvent::class => 'onGenericPageLoaded',
             NavigationPageLoadedEvent::class => 'onNavigationPageLoaded',
+            ProductPageLoadedEvent::class => 'onProductPageLoaded',
             ProductListingResultEvent::class => 'onListingResult',
         ];
     }
@@ -141,6 +143,21 @@ final class ListingLayoutSubscriber implements EventSubscriberInterface
             $category instanceof CategoryEntity ? $category : null,
             $event->getSalesChannelContext()->getSalesChannelId(),
         ));
+    }
+
+    /**
+     * Produktseite: Querverkauf und Produktschieber zeigen dieselben Kacheln wie das Listing der Kategorie, zu der der
+     * Artikel gehört (seine SEO-Kategorie). Ohne das kamen dort Standard-Kacheln, weil die Seite keine `navigationId`
+     * trägt und `onController` nichts entschied.
+     */
+    public function onProductPageLoaded(ProductPageLoadedEvent $event): void
+    {
+        $salesChannelId = $event->getSalesChannelContext()->getSalesChannelId();
+        $category = $this->decision->requiresCategory($salesChannelId) ? $event->getPage()->getProduct()->getSeoCategory() : null;
+        $active = $this->decision->isActiveFor($category instanceof CategoryEntity ? $category : null, $salesChannelId);
+
+        $event->getRequest()->attributes->set(self::REQUEST_ATTRIBUTE, $active);
+        $this->addLayoutFlag($event->getPage(), $active);
     }
 
     public function onListingResult(ProductListingResultEvent $event): void

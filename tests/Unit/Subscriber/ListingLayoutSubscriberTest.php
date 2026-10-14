@@ -12,6 +12,7 @@ use Shopware\Core\Content\Category\CategoryEntity;
 use Shopware\Core\Content\Product\Events\ProductListingResultEvent;
 use Shopware\Core\Content\Product\ProductCollection;
 use Shopware\Core\Content\Product\SalesChannel\Listing\ProductListingResult;
+use Shopware\Core\Content\Product\SalesChannel\SalesChannelProductEntity;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -24,6 +25,8 @@ use Shopware\Storefront\Page\GenericPageLoadedEvent;
 use Shopware\Storefront\Page\Navigation\NavigationPage;
 use Shopware\Storefront\Page\Navigation\NavigationPageLoadedEvent;
 use Shopware\Storefront\Page\Page;
+use Shopware\Storefront\Page\Product\ProductPage;
+use Shopware\Storefront\Page\Product\ProductPageLoadedEvent;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\KernelEvents;
 
@@ -56,6 +59,34 @@ final class ListingLayoutSubscriberTest extends TestCase
         self::assertIsArray($listener);
         self::assertSame('onController', $listener[0]);
         self::assertLessThan(KernelListenerPriorities::KERNEL_CONTROLLER_EVENT_CONTEXT_RESOLVE, $listener[1]);
+    }
+
+    /**
+     * Was: Produktseite eines Artikels, dessen SEO-Kategorie die Minimalliste trägt, und eines ohne.
+     * Warum: Querverkauf und Schieber auf der Produktseite sollen aussehen wie das Listing der Kategorie.
+     * Erwartet: Request-Wert und Erweiterung folgen dem Zusatzfeld der SEO-Kategorie.
+     */
+    public function testProductPageFollowsTheSeoCategory(): void
+    {
+        foreach ([true, false] as $marked) {
+            $category = new CategoryEntity();
+            $category->setId('category-id');
+            $category->setCustomFields(['rc_show_minimalistic_productlist' => $marked]);
+
+            $product = new SalesChannelProductEntity();
+            $product->setSeoCategory($category);
+            $page = new ProductPage();
+            $page->setProduct($product);
+            $request = new Request();
+
+            $this->subscriber($this->createMock(EntityRepository::class))
+                ->onProductPageLoaded(new ProductPageLoadedEvent($page, $this->createSalesChannelContext(), $request));
+
+            self::assertSame($marked, $request->attributes->get(ListingLayoutSubscriber::REQUEST_ATTRIBUTE));
+            /** @var ArrayStruct<array<string, mixed>> $extension */
+            $extension = $page->getExtension('rcMinimalisticLayout');
+            self::assertSame($marked, $extension->get('active'));
+        }
     }
 
     public function testOnNavigationPageLoadedWithActiveCustomFieldAddsPageExtension(): void
