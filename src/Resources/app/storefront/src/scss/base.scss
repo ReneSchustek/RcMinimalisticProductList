@@ -1,89 +1,84 @@
-// Der Platz, den der Produktname belegt — an einer Stelle festgelegt.
+// Der Platz, den der Produktname belegt, an einer Stelle festgelegt.
 //
-// Die Zeilenhöhe entspricht Shopwares Vorgabe für `.product-name`. Sie steht hier, damit die
-// Mindesthöhe und die Zeilenbegrenzung sich daraus ableiten lassen, statt dreimal denselben
-// Wert zu wiederholen.
-$rc-produktname-zeilen: 2 !default;
-$rc-produktname-zeilenhoehe: 1.375rem !default;
+// Die Zeilenhöhe entspricht Shopwares Vorgabe für `.product-name`. Sie steht hier, damit sich
+// Mindesthöhe und Zeilenbegrenzung daraus ableiten, statt dreimal denselben Wert zu wiederholen.
+$rc-product-name-lines: 2 !default;
+$rc-product-name-line-height: 1.375rem !default;
 
-// Der Platz, den der Preisblock belegt — nach derselben Regel wie der Name.
+// Der Platz, den der Preisblock belegt, nach derselben Regel wie der Name.
 //
-// Im Preisblock stehen zwei Zeilen, die es geben kann oder nicht: die Variantenzeile
-// („Varianten ab …") und der Nettopreis. Ohne Reservierung wird die Kachel um genau diese
-// Zeilen flacher, und eine Reihe im Slider läuft auseinander — am 2026-08-27 auf
-// `/handlaeufe/` gemessen: 337, 362 und 382 Pixel bei 18 Kacheln.
-//
-// Vier Zeilen sind das Maß: Preis, Variantenzeile, Nettopreis, Steuerhinweis. Ihre Zeilenhöhe
-// liegt über der des Namens — der Preis steht größer da. Am laufenden Shop gegengeprüft: Mit
-// 4 × 1,5 rem fällt die Spanne über 18 Kacheln auf **0 px**, mit 4 × 1,375 rem blieben 8 px.
-$rc-preisblock-zeilen: 4 !default;
-$rc-preisblock-zeilenhoehe: 1.5rem !default;
+// Vier Zeilen sind das Maß: Preis, Variantenzeile („Varianten ab …“), Nettopreis und Steuerhinweis.
+// Ihre Zeilenhöhe liegt über der des Namens, weil der Preis größer dasteht. Mit 4 × 1,5 rem sind
+// 18 Kacheln eines Sliders gleich hoch; mit 4 × 1,375 rem bleiben 8 px Unterschied.
+$rc-price-block-lines: 4 !default;
+$rc-price-block-line-height: 1.5rem !default;
 
-// Minimalistische Produktkarte: Karten in einer Reihe behalten ihre Equal-Height (visuelle Konsistenz),
-// aber der Inhalt klebt oben — keine erzwungene Streck-Lücke zwischen Bild, Titel und Preis.
+// Kacheln einer Reihe bleiben gleich hoch, ihr Inhalt steht aber oben. Die Lücke, die eine kurze
+// Kachel lässt, liegt unter dem Preis statt zwischen Bild, Titel und Preis.
 .product-box.box-rc-minimalistic {
     .card-body {
-        // Storefront-Default streckt diesen Block auf die ganze Karten-Höhe.
-        // Items vertikal stapeln und explizit oben halten — verhindert space-between-ähnliches Spread.
+        // Bootstraps Kartenkörper wächst mit `flex: 1 1 auto` auf die ganze Kartenhöhe. Als Spalte
+        // mit flex-start stapeln sich seine Kinder trotzdem oben.
         display: flex;
         flex-direction: column;
         justify-content: flex-start;
+        // Drei Viertel des Standardabstands von 1 rem: Ohne Beschreibung und Knopf wirkt die Kachel
+        // mit vollem Rand leer.
         padding: 0.75rem;
     }
 
     .product-image-wrapper {
-        // Storefront-Default `flex-grow: 1` würde den Bild-Wrapper auf den ganzen Card-Body-Restplatz aufziehen.
+        // Mit Shopwares `flex-grow: 1` zöge der Bildrahmen den ganzen Restplatz des Kartenkörpers auf.
         flex: 0 0 auto;
+        // Ein halber Grundabstand statt der 15 px aus dem Standard; Bild, Titel und Preis stehen als
+        // eine Gruppe enger beisammen.
         margin-bottom: 0.5rem;
     }
 
     .product-info {
-        // Storefront-Default `display: flex` plus Margins lassen den Preis ans Karten-Ende rutschen.
+        // Shopwares `display: flex` samt Außenabständen schöbe den Preis ans Kartenende.
         display: block;
         flex: 0 0 auto;
         margin-top: 0;
         margin-bottom: 0;
     }
 
-    // Der Titel belegt immer zwei Zeilen — auch wenn er nur eine füllt.
+    // Der Titel belegt immer zwei Zeilen, auch wenn er nur eine füllt.
     //
     // Shopware begrenzt den Namen nach oben auf zwei Zeilen (`-webkit-line-clamp: 2`) und
-    // reserviert denselben Platz mit einer festen Höhe. Diese Karte hatte die Höhe entfernt
-    // und die Begrenzung behalten — nach oben gedeckelt, nach unten offen. Ein einzeiliger
-    // Name belegte dann 22 statt 44 px, und die ganze Kachel wurde 22 px flacher als ihre
-    // Nachbarn. Im Slider, wo jede Kachel für sich steht, fiel das als ungleiche Reihe auf.
+    // reserviert denselben Platz mit einer festen Höhe. Fehlte die Höhe bei erhaltener Begrenzung,
+    // belegte ein einzeiliger Name 22 statt 44 px, und die Kachel stünde im Slider, wo jede Kachel
+    // für sich steht, 22 px flacher als ihre Nachbarn.
     //
-    // `min-height` statt `height`: Die Höhe bleibt nach oben offen, falls eine Schriftgröße
-    // oder ein Zeilenabstand die zwei Zeilen einmal höher macht. Gedeckelt wird weiterhin
-    // über die Zeilenbegrenzung, nicht über eine feste Höhe.
+    // `min-height` statt `height`: Die Höhe bleibt nach oben offen, falls eine Schriftgröße oder ein
+    // Zeilenabstand die zwei Zeilen höher macht. Gedeckelt wird über die Zeilenbegrenzung.
     //
-    // Zeilenzahl, Zeilenhöhe und Mindesthöhe kommen aus **einer** Quelle. Stünden sie
-    // getrennt, liefen sie beim nächsten Schriftwechsel auseinander — und der Sprung wäre
-    // zurück, ohne dass jemand die Verbindung sieht.
+    // Zeilenzahl, Zeilenhöhe und Mindesthöhe kommen aus einer Quelle. Stünden sie getrennt, liefen
+    // sie beim nächsten Schriftwechsel auseinander, ohne dass jemand die Verbindung sieht.
     .product-name {
         height: auto;
-        line-height: $rc-produktname-zeilenhoehe;
-        min-height: $rc-produktname-zeilen * $rc-produktname-zeilenhoehe;
-        -webkit-line-clamp: $rc-produktname-zeilen;
-        line-clamp: $rc-produktname-zeilen;
+        line-height: $rc-product-name-line-height;
+        min-height: $rc-product-name-lines * $rc-product-name-line-height;
+        -webkit-line-clamp: $rc-product-name-lines;
+        line-clamp: $rc-product-name-lines;
+        // Derselbe halbe Grundabstand wie unter dem Bild.
         margin-bottom: 0.5rem;
     }
 
-    // Der Preisblock hält seinen Platz frei — auch für das, was gerade nicht dasteht.
+    // Der Preisblock hält seinen Platz frei, auch für das, was gerade nicht dasteht.
     //
-    // Zwei seiner Zeilen sind wahlweise da: die Variantenzeile bei Artikeln mit Varianten und
-    // der Nettopreis. Fehlen sie, fiel die Kachel bisher um genau deren Höhe zusammen. Im
-    // Slider steht jede Kachel für sich, es gibt keine Reihe, die das ausgleicht — deshalb
-    // standen dort drei verschiedene Höhen nebeneinander.
+    // Zwei seiner Zeilen gibt es nur manchmal: die Variantenzeile bei Artikeln mit Varianten und
+    // den Nettopreis. Ohne Reservierung fiele die Kachel um genau deren Höhe zusammen. Im Slider
+    // gleicht keine Reihe das aus, und es stünden drei verschiedene Höhen nebeneinander.
     //
-    // `min-height` statt `height`: Wird eine Zeile einmal höher (längerer Preis, größere
-    // Schrift), wächst der Block mit, statt seinen Inhalt abzuschneiden.
+    // `min-height` statt `height`: Wird eine Zeile höher (längerer Preis, größere Schrift), wächst
+    // der Block mit, statt seinen Inhalt abzuschneiden.
     //
-    // Die Abwägung ist bewusst: Bei einer Kachel ohne beide Zeilen bleibt etwas Luft unter dem
-    // Preis. Eine ruhige Reihe gleich hoher Kacheln ist mehr wert als diese paar Pixel.
+    // Bei einer Kachel ohne beide Zeilen bleibt etwas Luft unter dem Preis. Eine ruhige Reihe
+    // gleich hoher Kacheln ist mehr wert als diese paar Pixel.
     .product-price-info {
         margin-top: 0;
-        min-height: $rc-preisblock-zeilen * $rc-preisblock-zeilenhoehe;
+        min-height: $rc-price-block-lines * $rc-price-block-line-height;
     }
 
     .product-price-unit {
@@ -92,7 +87,8 @@ $rc-preisblock-zeilenhoehe: 1.5rem !default;
     }
 
     .product-cheapest-price {
-        // Storefront-Default `min-height: 20px; margin-bottom: 32px` — im leeren Zustand überflüssig.
+        // Shopwares `min-height: 20px; margin-bottom: 32px` reserviert Platz für eine Zeile, die der
+        // Preisblock oben bereits einplant.
         min-height: 0;
         margin-bottom: 0;
     }

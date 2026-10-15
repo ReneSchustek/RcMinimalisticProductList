@@ -1,6 +1,8 @@
 {% sw_extends '@Storefront/storefront/component/product/card/box-standard.html.twig' %}
 
-{# Reduziert das Standard-Box-Layout auf Badge, Bild, Titel und Preis. Beschreibung, Varianten-Charakteristika, Action-Button und Rating werden ausgeblendet. #}
+{# Reduziert die Standard-Kachel auf Badge, Bild, Titel und Preis. Beschreibung, Variantenmerkmale,
+   Aktionsknopf und Bewertung bleiben leer; alle übrigen Blöcke und ihre Überschreibungen im Theme
+   gelten weiter, weil die Vorlage von box-standard erbt. #}
 {% block component_product_box_description %}{% endblock %}
 
 {% block component_product_box_variant_characteristics %}{% endblock %}

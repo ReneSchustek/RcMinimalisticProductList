@@ -10,19 +10,15 @@ use Shopware\Core\System\SystemConfig\SystemConfigService;
 /**
  * Entscheidet, ob eine Seite das minimalistische Layout bekommt.
  *
- * Die Entscheidung hat zwei Quellen — die Plugin-Einstellung „Geltungsbereich" (je Verkaufskanal)
- * und das Zusatzfeld an der Kategorie. Sie liegt hier und nicht im Subscriber, weil beide
- * Einstiegspunkte (Seitenaufruf und AJAX-Nachladen des Listings) dieselbe Antwort brauchen.
+ * Die Entscheidung hat zwei Quellen: die Plugin-Einstellung „Geltungsbereich“ (je Verkaufskanal) und
+ * das Zusatzfeld an der Kategorie. Sie liegt hier und nicht im Subscriber, weil alle Einstiegspunkte
+ * (Seitenaufruf, Nachladen des Listings, Produktseite) dieselbe Antwort brauchen.
  */
 final class LayoutDecision
 {
-    public const SCOPE_OFF = 'off';
-    public const SCOPE_ALL = 'all';
-    public const SCOPE_CATEGORIES = 'categories';
-
     public const CUSTOM_FIELD_KEY = 'rc_show_minimalistic_productlist';
 
-    private const CONFIG_KEY = 'RcMinimalisticProductList.config.scope';
+    public const CONFIG_KEY = 'RcMinimalisticProductList.config.scope';
 
     public function __construct(
         private readonly SystemConfigService $systemConfigService,
@@ -32,30 +28,28 @@ final class LayoutDecision
     public function isActiveFor(?CategoryEntity $category, ?string $salesChannelId): bool
     {
         return match ($this->scope($salesChannelId)) {
-            self::SCOPE_OFF => false,
-            self::SCOPE_ALL => true,
-            default => $this->hasActiveCustomField($category),
+            LayoutScope::Off => false,
+            LayoutScope::All => true,
+            LayoutScope::Categories => $this->hasActiveCustomField($category),
         };
     }
 
     /**
-     * Nur im Kategorie-Modus muss der Aufrufer eine Kategorie beschaffen. Sonst spart sich der
-     * AJAX-Pfad die Datenbank-Abfrage.
+     * Nur im Kategorie-Modus muss der Aufrufer eine Kategorie beschaffen; in den beiden anderen
+     * Modi spart er sich die Datenbankabfrage.
      */
     public function requiresCategory(?string $salesChannelId): bool
     {
-        return $this->scope($salesChannelId) === self::SCOPE_CATEGORIES;
+        return $this->scope($salesChannelId) === LayoutScope::Categories;
     }
 
-    private function scope(?string $salesChannelId): string
+    private function scope(?string $salesChannelId): LayoutScope
     {
         $scope = $this->systemConfigService->getString(self::CONFIG_KEY, $salesChannelId);
 
-        // Leerer oder unbekannter Wert bedeutet: bisheriges Verhalten. Ein Update darf das
-        // Aussehen bestehender Shops nicht verändern.
-        return \in_array($scope, [self::SCOPE_OFF, self::SCOPE_ALL, self::SCOPE_CATEGORIES], true)
-            ? $scope
-            : self::SCOPE_CATEGORIES;
+        // Ein leerer oder unbekannter Wert fällt auf den Kategorie-Modus zurück. Er ist die Vorgabe
+        // in config.xml, und ein Update ohne gespeicherte Einstellung verändert so keinen Shop.
+        return LayoutScope::tryFrom($scope) ?? LayoutScope::Categories;
     }
 
     private function hasActiveCustomField(?CategoryEntity $category): bool
@@ -66,6 +60,8 @@ final class LayoutDecision
 
         $customFields = $category->getCustomFields() ?? [];
 
+        // Die Administration speichert das Häkchen als 1, über die API kann ebenso true ankommen;
+        // der Cast deckt beides ab.
         return (bool) ($customFields[self::CUSTOM_FIELD_KEY] ?? false);
     }
 }

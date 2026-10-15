@@ -28,8 +28,8 @@
                     <name lang="en-GB">Off</name>
                 </option>
             </options>
-            <helpText>„Einzelne Kategorien" wertet das Zusatzfeld „Minimalistische Produktliste anzeigen" an der jeweiligen Kategorie aus — die Startseite gehört dabei zur Navigations-Wurzel des Verkaufskanals. „Alle Seiten" schaltet das Layout überall ein, auch für Produkt-Slider auf der Startseite und Cross-Selling auf Produktseiten.</helpText>
-            <helpText lang="en-GB">"Selected categories" evaluates the custom field "Show minimalistic product list" on each category; the home page belongs to the sales channel's navigation root. "All pages" enables the layout everywhere, including product sliders on the home page and cross-selling on product pages.</helpText>
+            <helpText>„Einzelne Kategorien" wertet das Zusatzfeld „Eine minimalistische Produktliste anzeigen" an der jeweiligen Kategorie aus — die Startseite gehört dabei zur Navigations-Wurzel des Verkaufskanals. „Alle Seiten" schaltet das Layout überall ein, auch für Produkt-Slider auf der Startseite und Cross-Selling auf Produktseiten.</helpText>
+            <helpText lang="en-GB">"Selected categories" evaluates the custom field "Show a minimalistic product list" on each category; the home page belongs to the sales channel's navigation root. "All pages" enables the layout everywhere, including product sliders on the home page and cross-selling on product pages.</helpText>
         </input-field>
     </card>
 </config>

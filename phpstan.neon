@@ -15,9 +15,3 @@ parameters:
         -
             message: '#Do not use Shopware\\Core\\Framework\\Context::createDefaultContext#'
             path: tests/*
-
-        # Der Aufruf steht im Kopf der Schleife und läuft genau einmal — die Regel prüft
-        # die Verschachtelung, nicht den Ablauf.
-        -
-            message: '#EntityRepository method calls are not allowed within loops#'
-            path: src/Service/CustomFieldsInstaller.php

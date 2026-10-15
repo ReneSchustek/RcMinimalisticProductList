@@ -15,9 +15,9 @@
         </service>
 
         <!--
-            CustomFieldsInstaller wird bewusst NICHT als Service registriert: er läuft nur in
-            den Lifecycle-Methoden (install/update/activate/uninstall), wo plugin-eigene Services
-            nicht im DI-Container sind. Er wird dort direkt mit den Core-Repositories instanziiert.
+            Der CustomFieldsInstaller fehlt hier, weil er nur in den Lebenszyklus-Methoden läuft
+            (install, update, activate, uninstall). Dort stehen die Dienste des Plugins noch nicht im
+            Container; die Plugin-Klasse baut ihn mit den Repositories des Kerns.
         -->
     </services>
 </container>

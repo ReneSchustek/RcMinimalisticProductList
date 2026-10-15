@@ -8,12 +8,11 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Pinning-Tests für die Twig-Templates des Listing-Overrides.
- * Sichern die Vererbungskette gegen versehentliches Löschen oder Refactoring ab —
- * die Storefront-Wirkung hängt davon ab, dass:
- *   1. box.html.twig per sw_extends vom Standard erbt und nur das Layout setzt
- *   2. box.html.twig die Entscheidung am Request abfragt, nicht nur an der Seite
- *   3. box-rc-minimalistic.html.twig vom box-standard erbt und vier Blöcke leert
+ * Hält die Vererbungskette der beiden Vorlagen fest, an der die ganze Wirkung im Shop hängt.
+ *
+ * `box.html.twig` erbt vom Standard, fragt die Entscheidung zuerst am Request ab und setzt nur das
+ * Layout; `box-rc-minimalistic.html.twig` erbt von `box-standard` und leert vier Blöcke. Twig meldet
+ * keinen Fehler, wenn eine dieser Verbindungen reißt, es rendert dann still die Standard-Kachel.
  */
 final class BoxTemplateContractTest extends TestCase
 {
@@ -26,7 +25,7 @@ final class BoxTemplateContractTest extends TestCase
         self::assertStringContainsString(
             "{% sw_extends '@Storefront/storefront/component/product/card/box.html.twig' %}",
             $content,
-            'box.html.twig muss vom Storefront-Standard erben — sonst geht der parent()-Dispatcher verloren.',
+            'box.html.twig muss vom Storefront-Standard erben, sonst fehlt der Dispatcher hinter parent().',
         );
     }
 
@@ -37,30 +36,30 @@ final class BoxTemplateContractTest extends TestCase
         self::assertStringContainsString(
             "app.request.attributes.get('rcMinimalisticLayoutActive')",
             $content,
-            'Request-Pfad: Beim Nachladen über /widgets/cms/navigation liegt weder die Seite noch das '
-            . 'Listing-Ergebnis im Twig-Kontext. Ohne den Request-Wert blättert der Kunde aus dem '
-            . 'minimalistischen Layout heraus.',
+            'Beim Nachladen über /widgets/cms/navigation liegt weder die Seite noch das Listing-Ergebnis im '
+            . 'Twig-Kontext. Ohne den Request-Wert blättert der Kunde aus dem minimalistischen Layout heraus.',
         );
         self::assertStringContainsString(
             'page.extensions.rcMinimalisticLayout.active',
             $content,
-            'Seiten-Pfad als Rückfall: greift für Vorlagen, die außerhalb eines Storefront-Requests rendern.',
+            'Die Seite ist der Rückfall für Aufrufe, bei denen am Request keine Entscheidung steht.',
         );
         self::assertStringNotContainsString(
             'searchResult.extensions',
             $content,
-            'Das Listing-Ergebnis erreicht diese Vorlage nicht -- am 2026-07-30 gegen echte Shopdaten '
-            . 'nachgemessen. Eine Abfrage darauf sähe nach Absicherung aus, wäre aber wirkungslos.',
+            'Das Listing-Ergebnis erreicht diese Vorlage nicht. Eine Abfrage darauf sähe nach Absicherung aus, '
+            . 'wäre aber wirkungslos.',
         );
         self::assertStringContainsString(
             "'rc-minimalistic'",
             $content,
-            'Layout-Bezeichner muss exakt rc-minimalistic sein — Dispatcher in box.html.twig sucht box-rc-minimalistic.html.twig.',
+            'Der Layout-Bezeichner muss rc-minimalistic lauten; der Dispatcher sucht danach '
+            . 'box-rc-minimalistic.html.twig.',
         );
         self::assertStringContainsString(
             '{{ parent() }}',
             $content,
-            'parent() muss den Standard-Dispatcher aufrufen, der das Sub-Template inkludiert.',
+            'parent() ruft den Standard-Dispatcher auf, der die Unter-Vorlage einbindet.',
         );
     }
 
@@ -71,7 +70,7 @@ final class BoxTemplateContractTest extends TestCase
         self::assertStringNotContainsString(
             'class="card product-box',
             $content,
-            'box.html.twig darf das card-Markup NICHT selber rendern — das ist Aufgabe des Sub-Templates.',
+            'Das Karten-Markup rendert die Unter-Vorlage; box.html.twig setzt nur das Layout.',
         );
     }
 
@@ -82,7 +81,7 @@ final class BoxTemplateContractTest extends TestCase
         self::assertStringContainsString(
             "{% sw_extends '@Storefront/storefront/component/product/card/box-standard.html.twig' %}",
             $content,
-            'Sub-Template muss vom box-standard erben — sonst fehlt das gesamte Card-Markup.',
+            'Die Unter-Vorlage muss von box-standard erben, sonst fehlt das gesamte Karten-Markup.',
         );
     }
 
@@ -95,7 +94,7 @@ final class BoxTemplateContractTest extends TestCase
         self::assertMatchesRegularExpression(
             $pattern,
             $content,
-            sprintf('Block "%s" muss leer überschrieben sein, sonst greift das Verstecken nicht.', $blockName),
+            sprintf('Block "%s" muss leer überschrieben sein, sonst bleibt er sichtbar.', $blockName),
         );
     }
 
@@ -105,21 +104,11 @@ final class BoxTemplateContractTest extends TestCase
     public static function provideBlocksToBlank(): array
     {
         return [
-            'description'              => ['component_product_box_description'],
-            'variant_characteristics'   => ['component_product_box_variant_characteristics'],
-            'action'                    => ['component_product_box_action'],
-            'rating'                    => ['component_product_box_rating'],
+            'description' => ['component_product_box_description'],
+            'variant_characteristics' => ['component_product_box_variant_characteristics'],
+            'action' => ['component_product_box_action'],
+            'rating' => ['component_product_box_rating'],
         ];
-    }
-
-    public function testObsoleteIslandTemplateIsRemoved(): void
-    {
-        $obsolete = self::VIEWS_DIR . '/box-minimalistic.html.twig';
-
-        self::assertFileDoesNotExist(
-            $obsolete,
-            'box-minimalistic.html.twig war eine nirgendwo eingebundene Insel und muss in v1.2.2 entfernt sein.',
-        );
     }
 
     public function testStorefrontScssIsShippedAtConventionPath(): void
@@ -128,7 +117,7 @@ final class BoxTemplateContractTest extends TestCase
 
         self::assertFileExists(
             $scss,
-            'base.scss muss am Shopware-Konventionspfad liegen — sonst greift theme:compile sie nicht automatisch.',
+            'Shopware bindet nur base.scss am Konventionspfad ein; jede andere Datei übergeht theme:compile.',
         );
 
         $content = file_get_contents($scss);
@@ -136,7 +125,7 @@ final class BoxTemplateContractTest extends TestCase
         self::assertStringContainsString(
             '.product-box.box-rc-minimalistic',
             $content,
-            'SCSS muss exakt auf die vom Twig-Override gesetzte CSS-Klasse zielen.',
+            'Die Regeln müssen auf die CSS-Klasse zielen, die das Layout rc-minimalistic erzeugt.',
         );
     }
 
@@ -145,7 +134,7 @@ final class BoxTemplateContractTest extends TestCase
         $path = self::VIEWS_DIR . '/' . $name;
         $content = file_get_contents($path);
 
-        self::assertIsString($content, sprintf('Template %s konnte nicht gelesen werden.', $name));
+        self::assertIsString($content, sprintf('Vorlage %s konnte nicht gelesen werden.', $name));
 
         return $content;
     }

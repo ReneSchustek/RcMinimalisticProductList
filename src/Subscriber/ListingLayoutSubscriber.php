@@ -20,43 +20,45 @@ use Shopware\Storefront\Page\GenericPageLoadedEvent;
 use Shopware\Storefront\Page\Navigation\NavigationPageLoadedEvent;
 use Shopware\Storefront\Page\Product\ProductPageLoadedEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\ControllerEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 
 /**
  * Stellt den Layout-Schalter überall bereit, wo Twig ihn braucht.
  *
- * **Der tragende Weg ist `onController`**: einmal pro Request, bevor ein Controller läuft. Nur er
- * greift unabhängig davon, welche Vorlage gerendert wird und was Shopware aus dem Cache beantwortet.
- * Die Produkt-Box liest ausschließlich diesen Wert.
+ * Die Produkt-Box liest zuerst das Request-Attribut `rcMinimalisticLayoutActive` und fällt auf die
+ * Erweiterung `rcMinimalisticLayout` an der Seite zurück. Das Attribut setzen `onController` (einmal je
+ * Request, vor jedem Controller und unabhängig vom Cache) und `onProductPageLoaded`.
  *
- * Die drei Ereignis-Handler daneben setzen zusätzlich die Erweiterung `rcMinimalisticLayout` an
- * Seite und Listing-Ergebnis. Das ist die öffentliche Schnittstelle für andere Plugins und Vorlagen:
- *   - Jede Storefront-Seite (GenericPageLoadedEvent): trägt den Geltungsbereich „Alle Seiten" auch
- *     dorthin, wo es keine Kategorie gibt — Startseite, Produktdetailseite mit Cross-Selling, Suche.
- *   - Kategorie-Listing-Seiten (NavigationPageLoadedEvent): wertet das Zusatzfeld der Kategorie aus.
- *   - Listing-Ergebnis (ProductListingResultEvent), sofern es nicht aus dem Cache kommt.
+ * Die vier Seiten- und Listing-Handler setzen außerdem die Erweiterung, die öffentliche Schnittstelle für
+ * andere Plugins und Vorlagen:
+ * `onGenericPageLoaded` trägt den Geltungsbereich „Alle Seiten“ auf Seiten ohne Kategorie (Startseite,
+ * Suche), `onNavigationPageLoaded` wertet das Zusatzfeld der Kategorie aus, `onProductPageLoaded` das der
+ * SEO-Kategorie des Artikels, und `onListingResult` hängt sie an das Listing-Ergebnis, sofern Shopware es
+ * nicht aus dem Cache beantwortet.
  */
 final class ListingLayoutSubscriber implements EventSubscriberInterface
 {
     public const EXTENSION_NAME = 'rcMinimalisticLayout';
 
     /**
-     * Der Ablageort, aus dem die Vorlage tatsächlich liest.
+     * Der Ablageort, aus dem die Vorlage zuerst liest.
      *
-     * Warum nicht die Erweiterung: Die Produkt-Box wird in zwei sehr verschiedenen Zusammenhängen
-     * gerendert. Beim Seitenaufruf steht die Seite im Twig-Kontext. Beim Nachladen über
-     * `/widgets/cms/navigation/{id}` -- also bei jedem Filter- und Seitenwechsel -- gibt es dort
-     * weder `page` noch das Listing-Ergebnis; beides erreicht die Vorlage nicht. Das Listing fiel
-     * deshalb beim Blättern auf das Standard-Layout zurück.
+     * Die Produkt-Box wird in zwei Zusammenhängen gerendert. Beim Seitenaufruf steht die Seite im
+     * Twig-Kontext; beim Nachladen über `/widgets/cms/navigation/{id}`, also bei jedem Filter- und
+     * Seitenwechsel, gibt es dort weder `page` noch das Listing-Ergebnis. Stünde die Entscheidung nur an
+     * der Seite, fiele das Listing beim Blättern auf Standard-Kacheln zurück.
      *
-     * Am Request kommt die Entscheidung in jedem Zusammenhang an -- und, anders als die Erweiterung
-     * am Listing-Ergebnis, auch dann, wenn Shopware die aufgelöste Kategorie-Seite aus dem Cache
-     * beantwortet. Genau das tut es im Regelfall: Am 2026-07-30 gegen echte Shopdaten nachgemessen lief
-     * `onListingResult` bei keinem einzigen Seitenaufruf, weil das Ergebnis samt Erweiterung aus
-     * dem Cache kam.
+     * Am Request kommt sie in beiden Zusammenhängen an, auch wenn Shopware die aufgelöste Kategorie-Seite
+     * samt Listing-Ergebnis aus dem Cache beantwortet und `onListingResult` deshalb gar nicht läuft.
      */
     public const REQUEST_ATTRIBUTE = 'rcMinimalisticLayoutActive';
+
+    /**
+     * Route-Parameter, unter dem Shopware die Kategorie eines Listing-Aufrufs ablegt.
+     */
+    private const NAVIGATION_ID_ATTRIBUTE = 'navigationId';
 
     /**
      * @param EntityRepository<CategoryCollection> $categoryRepository
@@ -70,11 +72,13 @@ final class ListingLayoutSubscriber implements EventSubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [
-            // Direkt nach der Kontextauflösung des Kerns (Rang -10). Mit dem Standardrang 0 lief der
-            // Zuhörer davor, fand keinen Verkaufskanal-Kontext und entschied nichts. Beim Seitenaufruf
-            // fiel das nicht auf, weil die Vorlage auf die Erweiterung an der Seite zurückfällt; beim
-            // Nachladen gibt es keine Seite, und Blättern zeigte Standard-Kacheln.
-            KernelEvents::CONTROLLER => ['onController', KernelListenerPriorities::KERNEL_CONTROLLER_EVENT_CONTEXT_RESOLVE_POST],
+            // Direkt nach der Kontextauflösung des Kerns (Rang -10). Liefe der Zuhörer davor, fände er
+            // keinen Verkaufskanal-Kontext und entschiede nichts; beim Nachladen gibt es keine Seite, auf
+            // die die Vorlage zurückfallen könnte, und Blättern zeigte Standard-Kacheln.
+            KernelEvents::CONTROLLER => [
+                'onController',
+                KernelListenerPriorities::KERNEL_CONTROLLER_EVENT_CONTEXT_RESOLVE_POST,
+            ],
             GenericPageLoadedEvent::class => 'onGenericPageLoaded',
             NavigationPageLoadedEvent::class => 'onNavigationPageLoaded',
             ProductPageLoadedEvent::class => 'onProductPageLoaded',
@@ -83,50 +87,33 @@ final class ListingLayoutSubscriber implements EventSubscriberInterface
     }
 
     /**
-     * Trifft die Entscheidung einmal pro Request, bevor irgendein Controller läuft.
+     * Legt die Entscheidung am Request ab, bevor ein Controller läuft.
      *
-     * Das ist der einzige Weg, der unabhängig davon greift, welche Vorlage gerendert wird und was
-     * Shopware aus dem Cache beantwortet. Die drei Ereignis-Handler darunter bleiben, weil sie die
-     * Erweiterung an Seite und Listing-Ergebnis setzen -- die ist die öffentliche Schnittstelle für
-     * andere Plugins. Für die Darstellung zählt der Request-Wert.
+     * Ohne Entscheidung (Kategorie-Modus ohne oder mit unbekannter Kategorie) bleibt das Attribut leer,
+     * und die Vorlage fällt auf die Erweiterung an der Seite zurück.
      */
     public function onController(ControllerEvent $event): void
     {
         $request = $event->getRequest();
         $context = $request->attributes->get(PlatformRequest::ATTRIBUTE_SALES_CHANNEL_CONTEXT_OBJECT);
 
-        // Admin, Store-API ohne Verkaufskanal, interne Aufrufe: hier gibt es nichts zu entscheiden.
+        // Administration, Store-API ohne Verkaufskanal, interne Aufrufe: Dort rendert keine Produkt-Box.
         if (!$context instanceof SalesChannelContext) {
             return;
         }
 
-        $salesChannelId = $context->getSalesChannelId();
-
-        if (!$this->decision->requiresCategory($salesChannelId)) {
-            $request->attributes->set(self::REQUEST_ATTRIBUTE, $this->decision->isActiveFor(null, $salesChannelId));
-
-            return;
+        $active = $this->decideForRequest($request, $context);
+        if ($active !== null) {
+            $request->attributes->set(self::REQUEST_ATTRIBUTE, $active);
         }
-
-        $navigationId = $request->attributes->get('navigationId');
-        if (!\is_string($navigationId) || $navigationId === '') {
-            return;
-        }
-
-        $category = $this->ladeKategorie($navigationId, $context->getContext());
-        if ($category === null) {
-            return;
-        }
-
-        $request->attributes->set(self::REQUEST_ATTRIBUTE, $this->decision->isActiveFor($category, $salesChannelId));
     }
 
     public function onGenericPageLoaded(GenericPageLoadedEvent $event): void
     {
         $salesChannelId = $event->getSalesChannelContext()->getSalesChannelId();
 
-        // Ohne Kategorie kann hier nur der Geltungsbereich entscheiden. Im Kategorie-Modus bleibt
-        // die Seite unangetastet — dafür ist onNavigationPageLoaded zuständig.
+        // Ohne Kategorie kann hier nur der Geltungsbereich entscheiden. Im Kategorie-Modus bleibt die Seite
+        // unangetastet, sonst überschriebe ein false das Ergebnis von onNavigationPageLoaded.
         if ($this->decision->requiresCategory($salesChannelId)) {
             return;
         }
@@ -146,53 +133,63 @@ final class ListingLayoutSubscriber implements EventSubscriberInterface
     }
 
     /**
-     * Produktseite: Querverkauf und Produktschieber zeigen dieselben Kacheln wie das Listing der Kategorie, zu der der
-     * Artikel gehört (seine SEO-Kategorie). Ohne diesen Zuhörer kämen dort Standard-Kacheln, weil die Seite keine
-     * `navigationId` trägt und `onController` im Kategorie-Modus nichts entscheidet.
+     * Querverkauf und Produktschieber der Produktseite zeigen dieselben Kacheln wie das Listing der
+     * SEO-Kategorie des Artikels. Die Produktseite trägt keine `navigationId`, `onController` entscheidet
+     * dort im Kategorie-Modus also nichts.
      */
     public function onProductPageLoaded(ProductPageLoadedEvent $event): void
     {
         $salesChannelId = $event->getSalesChannelContext()->getSalesChannelId();
         // Die SEO-Kategorie zählt nur im Kategorie-Modus; sonst entscheidet allein der Geltungsbereich.
-        $category = $this->decision->requiresCategory($salesChannelId) ? $event->getPage()->getProduct()->getSeoCategory() : null;
-        $active = $this->decision->isActiveFor($category instanceof CategoryEntity ? $category : null, $salesChannelId);
+        $category = $this->decision->requiresCategory($salesChannelId) ? $this->seoCategoryOf($event) : null;
+        $active = $this->decision->isActiveFor($category, $salesChannelId);
 
-        // Die Produkt-Box liest nur den Request-Wert; die Erweiterung an der Seite ist für andere Plugins.
         $event->getRequest()->attributes->set(self::REQUEST_ATTRIBUTE, $active);
         $this->addLayoutFlag($event->getPage(), $active);
     }
 
     public function onListingResult(ProductListingResultEvent $event): void
     {
-        $salesChannelId = $event->getSalesChannelContext()->getSalesChannelId();
-        $result = $event->getResult();
-
-        if (!$this->decision->requiresCategory($salesChannelId)) {
-            $this->addLayoutFlag($result, $this->decision->isActiveFor(null, $salesChannelId));
-
-            return;
+        $active = $this->decideForRequest($event->getRequest(), $event->getSalesChannelContext());
+        if ($active !== null) {
+            $this->addLayoutFlag($event->getResult(), $active);
         }
-
-        $navigationId = $event->getRequest()->attributes->get('navigationId');
-        if (!\is_string($navigationId) || $navigationId === '') {
-            return;
-        }
-
-        $category = $this->ladeKategorie($navigationId, $event->getContext());
-        if ($category === null) {
-            return;
-        }
-
-        $this->addLayoutFlag($result, $this->decision->isActiveFor($category, $salesChannelId));
     }
 
     /**
-     * WICHTIG: KEIN `Criteria::addFields()` verwenden. Partial Loading lässt den EntityHydrator eine
-     * `PartialEntity` (erbt von `ArrayEntity`) statt einer `CategoryEntity` zurückgeben — der
-     * `instanceof`-Test schlüge dann IMMER fehl und das Layout würde beim Nachladen nie gesetzt.
-     * Eine Suche über eine einzelne ID ist ohnehin günstig.
+     * Entscheidung für einen Listing-Aufruf, dessen Kategorie als Route-Parameter am Request steht.
+     *
+     * @return bool|null null, wenn der Kategorie-Modus gilt und keine bekannte Kategorie am Request steht
      */
-    private function ladeKategorie(string $navigationId, Context $context): ?CategoryEntity
+    private function decideForRequest(Request $request, SalesChannelContext $context): ?bool
+    {
+        $salesChannelId = $context->getSalesChannelId();
+
+        if (!$this->decision->requiresCategory($salesChannelId)) {
+            return $this->decision->isActiveFor(null, $salesChannelId);
+        }
+
+        $navigationId = $request->attributes->get(self::NAVIGATION_ID_ATTRIBUTE);
+        if (!\is_string($navigationId) || $navigationId === '') {
+            return null;
+        }
+
+        $category = $this->loadCategory($navigationId, $context->getContext());
+        if ($category === null) {
+            return null;
+        }
+
+        return $this->decision->isActiveFor($category, $salesChannelId);
+    }
+
+    /**
+     * Lädt die ganze Kategorie, nicht nur ihre Zusatzfelder.
+     *
+     * Mit `Criteria::addFields()` gäbe der Hydrator eine `PartialEntity` statt einer `CategoryEntity`
+     * zurück; der `instanceof`-Test schlüge dann immer fehl, und beim Nachladen käme nie das Layout. Eine
+     * Suche über eine einzelne ID ist ohnehin günstig.
+     */
+    private function loadCategory(string $navigationId, Context $context): ?CategoryEntity
     {
         $category = $this->categoryRepository
             ->search(new Criteria([$navigationId]), $context)
@@ -200,6 +197,11 @@ final class ListingLayoutSubscriber implements EventSubscriberInterface
             ->first();
 
         return $category instanceof CategoryEntity ? $category : null;
+    }
+
+    private function seoCategoryOf(ProductPageLoadedEvent $event): ?CategoryEntity
+    {
+        return $event->getPage()->getProduct()->getSeoCategory();
     }
 
     private function addLayoutFlag(Struct $target, bool $active): void

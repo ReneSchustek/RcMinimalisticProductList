@@ -16,10 +16,22 @@ use Shopware\Core\System\CustomField\Aggregate\CustomFieldSetRelation\CustomFiel
 use Shopware\Core\System\CustomField\CustomFieldCollection;
 use Shopware\Core\System\CustomField\CustomFieldTypes;
 
+/**
+ * Legt das Zusatzfeld „Eine minimalistische Produktliste anzeigen“ samt Bindung an die Kategorie an,
+ * gleicht es ab und entfernt es wieder.
+ *
+ * Er ist kein Dienst im Container, weil er nur in den Lebenszyklus-Methoden läuft, in denen die Dienste
+ * des Plugins noch nicht geladen sind; die Plugin-Klasse baut ihn dort mit den Repositories des Kerns.
+ */
 final class CustomFieldsInstaller
 {
     private const CUSTOM_FIELDSET_NAME = 'rc_show_minimalistic_productlist_category_bool';
     private const RELATION_ENTITY = 'category';
+
+    // Die Systemsprache bekommt den englischen Text, wie bei der Überschrift des Sets.
+    private const FIELD_LABEL_EN = 'Show a minimalistic product list';
+    private const FIELD_HELP_TEXT_EN = 'If activated, the product list of this category only shows '
+        . 'picture, title and price.';
 
     private const CUSTOM_FIELDSET = [
         'name' => self::CUSTOM_FIELDSET_NAME,
@@ -41,17 +53,20 @@ final class CustomFieldsInstaller
                 'name' => 'rc_show_minimalistic_productlist',
                 'type' => CustomFieldTypes::BOOL,
                 'config' => [
+                    // Dieselbe Vorgabe schreibt die Administration für ein dort angelegtes Kontrollkästchen;
+                    // der Feld-Renderer leitet die Komponente dann aus `type` ab.
                     'componentName' => 'sw-field',
                     'type' => 'checkbox',
                     'customFieldType' => 'checkbox',
                     'label' => [
-                        'en-GB' => 'Show a minimalistic productlist',
+                        'en-GB' => self::FIELD_LABEL_EN,
                         'de-DE' => 'Eine minimalistische Produktliste anzeigen',
-                        Defaults::LANGUAGE_SYSTEM => 'Show a minimalistic productlist',
+                        Defaults::LANGUAGE_SYSTEM => self::FIELD_LABEL_EN,
                     ],
                     'helpText' => [
-                        'en-GB' => 'If activated, the productlist for the category only contains picture, title and price.',
+                        'en-GB' => self::FIELD_HELP_TEXT_EN,
                         'de-DE' => 'Wenn aktiviert, enthält die Produktliste nur das Bild, den Titel und den Preis.',
+                        Defaults::LANGUAGE_SYSTEM => self::FIELD_HELP_TEXT_EN,
                     ],
                     'customFieldPosition' => 1,
                 ],
@@ -74,8 +89,9 @@ final class CustomFieldsInstaller
 
     public function install(Context $context): void
     {
-        // Set + nested Field-IDs vor dem Upsert auflösen, damit Shopware UPDATE statt INSERT
-        // macht — sonst kollidiert uniq.custom_field.name bei Bestandsinstallationen.
+        // Die IDs des vorhandenen Sets und seiner Felder gehören in die Nutzlast, damit der Upsert
+        // aktualisiert statt neu anzulegen. Sonst scheitert er in bestehenden Shops am eindeutigen
+        // Feldnamen (uniq.custom_field.name).
         $payload = self::CUSTOM_FIELDSET;
         $existingSet = $this->resolveExistingSet($context);
 
@@ -101,8 +117,8 @@ final class CustomFieldsInstaller
             'entityName' => self::RELATION_ENTITY,
         ];
 
-        // Existierende Relation per ID einreichen, damit uniq.custom_field_set_relation
-        // (set_id, entity_name) nicht bei deactivate→activate-Zyklen kollidiert.
+        // Die vorhandene Bindung geht mit ihrer ID hinein. Ohne sie scheiterte jedes erneute Aktivieren am
+        // eindeutigen Schlüssel aus Set und Entität (uniq.custom_field_set_relation).
         $existingRelationId = $this->resolveExistingRelationId($existingSet, self::RELATION_ENTITY);
         if ($existingRelationId !== null) {
             $relationPayload['id'] = $existingRelationId;
@@ -169,10 +185,11 @@ final class CustomFieldsInstaller
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsAnyFilter('name', $names));
 
+        $existingFields = $this->customFieldRepository->search($criteria, $context)->getEntities();
+
         $idByName = [];
-        foreach ($this->customFieldRepository->search($criteria, $context)->getEntities() as $entity) {
-            // Der Name ist laut Typangabe ein Text; eine Prüfung darauf kann nicht fehlschlagen.
-            $idByName[$entity->getName()] = $entity->getId();
+        foreach ($existingFields as $existingField) {
+            $idByName[$existingField->getName()] = $existingField->getId();
         }
 
         if ($idByName === []) {

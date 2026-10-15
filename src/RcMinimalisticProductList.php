@@ -15,21 +15,25 @@ use Shopware\Core\System\CustomField\Aggregate\CustomFieldSet\CustomFieldSetColl
 use Shopware\Core\System\CustomField\Aggregate\CustomFieldSetRelation\CustomFieldSetRelationCollection;
 use Shopware\Core\System\CustomField\CustomFieldCollection;
 
+/**
+ * Lebenszyklus des Plugins: legt das Zusatzfeld an der Kategorie an, gleicht es bei jedem Update ab und
+ * entfernt es nur, wenn der Betreiber beim Deinstallieren die Daten nicht behalten will.
+ */
 final class RcMinimalisticProductList extends Plugin
 {
     public function install(InstallContext $installContext): void
     {
         $installer = $this->getCustomFieldsInstaller();
         $installer->install($installContext->getContext());
-        // Relation gleich mit anlegen, damit auch der keepUserData-Reinstall-Pfad
-        // (bei dem activate() nicht erneut feuert) die Kategorie-Bindung erhält.
+        // Die Bindung an die Kategorie entsteht schon hier. Nach einer Deinstallation mit behaltenen Daten
+        // läuft activate() bei der Neuinstallation nicht erneut, und das Feld stünde an keiner Kategorie.
         $installer->addRelations($installContext->getContext());
     }
 
     public function update(UpdateContext $updateContext): void
     {
-        // Label-/Config-/Relation-Drift bestehender Installationen beim Plugin-Update
-        // abgleichen — der ID-Auflösungs-Code im Installer ist re-run-sicher.
+        // Geänderte Beschriftungen und eine verlorene Kategorie-Bindung kommen so auch in bestehenden Shops an.
+        // Der Installer übernimmt vorhandene IDs und lässt sich beliebig oft aufrufen.
         $installer = $this->getCustomFieldsInstaller();
         $installer->install($updateContext->getContext());
         $installer->addRelations($updateContext->getContext());
@@ -49,7 +53,10 @@ final class RcMinimalisticProductList extends Plugin
         $this->getCustomFieldsInstaller()->addRelations($activateContext->getContext());
     }
 
-    // Während install()/activate() sind plugin-eigene Services noch nicht im DI-Container.
+    /**
+     * Baut den Installer von Hand: Während install() und activate() stehen die Dienste des Plugins noch
+     * nicht im Container, nur die des Kerns.
+     */
     private function getCustomFieldsInstaller(): CustomFieldsInstaller
     {
         $container = $this->container;

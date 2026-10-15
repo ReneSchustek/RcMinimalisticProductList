@@ -6,6 +6,7 @@ namespace Ruhrcoder\RcMinimalisticProductList\Tests\Unit\Subscriber;
 
 use PHPUnit\Framework\TestCase;
 use Ruhrcoder\RcMinimalisticProductList\Service\LayoutDecision;
+use Ruhrcoder\RcMinimalisticProductList\Service\LayoutScope;
 use Ruhrcoder\RcMinimalisticProductList\Subscriber\ListingLayoutSubscriber;
 use Shopware\Core\Content\Category\CategoryCollection;
 use Shopware\Core\Content\Category\CategoryEntity;
@@ -19,6 +20,8 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
 use Shopware\Core\Framework\Routing\KernelListenerPriorities;
 use Shopware\Core\Framework\Struct\ArrayStruct;
+use Shopware\Core\Framework\Struct\Struct;
+use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Shopware\Storefront\Page\GenericPageLoadedEvent;
@@ -28,29 +31,36 @@ use Shopware\Storefront\Page\Page;
 use Shopware\Storefront\Page\Product\ProductPage;
 use Shopware\Storefront\Page\Product\ProductPageLoadedEvent;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Event\ControllerEvent;
+use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
 
+/**
+ * Prüft jeden Handler des Subscribers mit gestellter Konfiguration und gestelltem Repository, in allen
+ * drei Geltungsbereichen. Den Weg über eine echte Datenbank prüft der Integrationstest.
+ */
 final class ListingLayoutSubscriberTest extends TestCase
 {
-    public function testGetSubscribedEventsCoversBothPaths(): void
+    private const NAVIGATION_ID_ATTRIBUTE = 'navigationId';
+
+    private const CATEGORY_ID = 'category-id';
+
+    public function testGetSubscribedEventsCoversAllFiveEvents(): void
     {
         $events = ListingLayoutSubscriber::getSubscribedEvents();
 
-        self::assertArrayHasKey(NavigationPageLoadedEvent::class, $events);
-        self::assertSame('onNavigationPageLoaded', $events[NavigationPageLoadedEvent::class]);
-
-        self::assertArrayHasKey(ProductListingResultEvent::class, $events);
-        self::assertSame('onListingResult', $events[ProductListingResultEvent::class]);
-
-        self::assertArrayHasKey(GenericPageLoadedEvent::class, $events);
+        self::assertCount(5, $events);
         self::assertSame('onGenericPageLoaded', $events[GenericPageLoadedEvent::class]);
+        self::assertSame('onNavigationPageLoaded', $events[NavigationPageLoadedEvent::class]);
+        self::assertSame('onProductPageLoaded', $events[ProductPageLoadedEvent::class]);
+        self::assertSame('onListingResult', $events[ProductListingResultEvent::class]);
+        self::assertArrayHasKey(KernelEvents::CONTROLLER, $events);
     }
 
     /**
-     * Was: Rang des Zuhörers am Controller-Ereignis.
-     * Warum: Vor der Kontextauflösung des Kerns fehlt der Verkaufskanal, die Entscheidung fiel aus,
-     *        und beim Blättern einer markierten Kategorie kamen Standard-Kacheln.
-     * Erwartet: Der Rang liegt unter dem der Kontextauflösung, der Zuhörer läuft also danach.
+     * Vor der Kontextauflösung des Kerns fehlte der Verkaufskanal, und beim Blättern einer markierten
+     * Kategorie kämen Standard-Kacheln.
      */
     public function testTheControllerListenerRunsAfterTheContextIsResolved(): void
     {
@@ -61,175 +71,215 @@ final class ListingLayoutSubscriberTest extends TestCase
         self::assertLessThan(KernelListenerPriorities::KERNEL_CONTROLLER_EVENT_CONTEXT_RESOLVE, $listener[1]);
     }
 
+    public function testControllerStoresTheDecisionForAMarkedCategory(): void
+    {
+        $repository = $this->createMock(EntityRepository::class);
+        $repository->method('search')->willReturn($this->createSearchResult($this->category(true)));
+        $request = $this->storefrontRequest(self::CATEGORY_ID);
+
+        $this->subscriber($repository)->onController($this->controllerEvent($request));
+
+        self::assertTrue($request->attributes->get(ListingLayoutSubscriber::REQUEST_ATTRIBUTE));
+    }
+
+    public function testControllerStoresExplicitFalseForAnUnmarkedCategory(): void
+    {
+        $repository = $this->createMock(EntityRepository::class);
+        $repository->method('search')->willReturn($this->createSearchResult($this->category(false)));
+        $request = $this->storefrontRequest(self::CATEGORY_ID);
+
+        $this->subscriber($repository)->onController($this->controllerEvent($request));
+
+        self::assertFalse($request->attributes->get(ListingLayoutSubscriber::REQUEST_ATTRIBUTE));
+    }
+
     /**
-     * Was: Produktseite eines Artikels, dessen SEO-Kategorie die Minimalliste trägt, und eines ohne.
-     * Warum: Querverkauf und Schieber auf der Produktseite sollen aussehen wie das Listing der Kategorie.
-     * Erwartet: Request-Wert und Erweiterung folgen dem Zusatzfeld der SEO-Kategorie.
+     * Ohne Kategorie entscheidet der Controller-Weg im Kategorie-Modus nichts; die Vorlage fällt dann auf
+     * die Erweiterung an der Seite zurück, die onNavigationPageLoaded setzt.
+     */
+    public function testControllerLeavesTheRequestAloneWithoutNavigationId(): void
+    {
+        $repository = $this->createMock(EntityRepository::class);
+        $repository->expects($this->never())->method('search');
+        $request = $this->storefrontRequest(null);
+
+        $this->subscriber($repository)->onController($this->controllerEvent($request));
+
+        self::assertFalse($request->attributes->has(ListingLayoutSubscriber::REQUEST_ATTRIBUTE));
+    }
+
+    public function testControllerLeavesTheRequestAloneForAnUnknownCategory(): void
+    {
+        $repository = $this->createMock(EntityRepository::class);
+        $repository->method('search')->willReturn($this->createSearchResult(null));
+        $request = $this->storefrontRequest(self::CATEGORY_ID);
+
+        $this->subscriber($repository)->onController($this->controllerEvent($request));
+
+        self::assertFalse($request->attributes->has(ListingLayoutSubscriber::REQUEST_ATTRIBUTE));
+    }
+
+    public function testControllerDecidesWithoutCategoryLookupWhenScopeIsAll(): void
+    {
+        $repository = $this->createMock(EntityRepository::class);
+        $repository->expects($this->never())->method('search');
+        $request = $this->storefrontRequest(null);
+
+        $this->subscriber($repository, LayoutScope::All)->onController($this->controllerEvent($request));
+
+        self::assertTrue($request->attributes->get(ListingLayoutSubscriber::REQUEST_ATTRIBUTE));
+    }
+
+    public function testControllerIgnoresRequestsWithoutSalesChannelContext(): void
+    {
+        $repository = $this->createMock(EntityRepository::class);
+        $repository->expects($this->never())->method('search');
+        $request = new Request();
+        $request->attributes->set(self::NAVIGATION_ID_ATTRIBUTE, self::CATEGORY_ID);
+
+        $this->subscriber($repository, LayoutScope::All)->onController($this->controllerEvent($request));
+
+        self::assertFalse($request->attributes->has(ListingLayoutSubscriber::REQUEST_ATTRIBUTE));
+    }
+
+    /**
+     * Querverkauf und Schieber auf der Produktseite sehen aus wie das Listing der SEO-Kategorie.
      */
     public function testProductPageFollowsTheSeoCategory(): void
     {
         foreach ([true, false] as $marked) {
-            $category = new CategoryEntity();
-            $category->setId('category-id');
-            $category->setCustomFields(['rc_show_minimalistic_productlist' => $marked]);
-
-            $product = new SalesChannelProductEntity();
-            $product->setSeoCategory($category);
-            $page = new ProductPage();
-            $page->setProduct($product);
-            $request = new Request();
-
-            $this->subscriber($this->createMock(EntityRepository::class))
-                ->onProductPageLoaded(new ProductPageLoadedEvent($page, $this->createSalesChannelContext(), $request));
+            [$page, $request] = $this->productPageThroughSubscriber($this->category($marked), LayoutScope::Categories);
 
             self::assertSame($marked, $request->attributes->get(ListingLayoutSubscriber::REQUEST_ATTRIBUTE));
-            /** @var ArrayStruct<array<string, mixed>> $extension */
-            $extension = $page->getExtension('rcMinimalisticLayout');
-            self::assertSame($marked, $extension->get('active'));
+            self::assertSame($marked, $this->layoutFlagOf($page));
         }
+    }
+
+    public function testProductPageWithoutSeoCategoryStaysDefaultInCategoryMode(): void
+    {
+        [$page, $request] = $this->productPageThroughSubscriber(null, LayoutScope::Categories);
+
+        self::assertFalse($request->attributes->get(ListingLayoutSubscriber::REQUEST_ATTRIBUTE));
+        self::assertFalse($this->layoutFlagOf($page));
+    }
+
+    public function testProductPageIsMinimalisticEverywhereWhenScopeIsAll(): void
+    {
+        [$page, $request] = $this->productPageThroughSubscriber(null, LayoutScope::All);
+
+        self::assertTrue($request->attributes->get(ListingLayoutSubscriber::REQUEST_ATTRIBUTE));
+        self::assertTrue($this->layoutFlagOf($page));
+    }
+
+    public function testProductPageIgnoresAMarkedSeoCategoryWhenScopeIsOff(): void
+    {
+        [$page, $request] = $this->productPageThroughSubscriber($this->category(true), LayoutScope::Off);
+
+        self::assertFalse($request->attributes->get(ListingLayoutSubscriber::REQUEST_ATTRIBUTE));
+        self::assertFalse($this->layoutFlagOf($page));
     }
 
     public function testOnNavigationPageLoadedWithActiveCustomFieldAddsPageExtension(): void
     {
-        $category = new CategoryEntity();
-        $category->setId('category-id-balkongelaender');
-        $category->setCustomFields(['rc_show_minimalistic_productlist' => true]);
-
-        $page = $this->createNavigationPage($category);
-        $event = $this->createNavigationEvent($page);
+        $page = $this->createNavigationPage($this->category(true));
 
         $repository = $this->createMock(EntityRepository::class);
         $repository->expects($this->never())->method('search');
 
-        $subscriber = $this->subscriber($repository);
-        $subscriber->onNavigationPageLoaded($event);
+        $this->subscriber($repository)->onNavigationPageLoaded($this->createNavigationEvent($page));
 
-        self::assertTrue($page->hasExtension('rcMinimalisticLayout'));
-
-        /** @var ArrayStruct<array<string, mixed>> $extension */
-        $extension = $page->getExtension('rcMinimalisticLayout');
-        self::assertTrue($extension->get('active'));
+        self::assertTrue($this->layoutFlagOf($page));
     }
 
     public function testOnNavigationPageLoadedWithInactiveCustomFieldAddsFalseExtension(): void
     {
-        $category = new CategoryEntity();
-        $category->setId('category-id-balkongelaender');
-        $category->setCustomFields(['rc_show_minimalistic_productlist' => false]);
+        $page = $this->createNavigationPage($this->category(false));
 
-        $page = $this->createNavigationPage($category);
-        $event = $this->createNavigationEvent($page);
+        $this->subscriber($this->createMock(EntityRepository::class))
+            ->onNavigationPageLoaded($this->createNavigationEvent($page));
 
-        $repository = $this->createMock(EntityRepository::class);
-        $subscriber = $this->subscriber($repository);
-        $subscriber->onNavigationPageLoaded($event);
-
-        /** @var ArrayStruct<array<string, mixed>> $extension */
-        $extension = $page->getExtension('rcMinimalisticLayout');
-        self::assertFalse($extension->get('active'));
+        self::assertFalse($this->layoutFlagOf($page));
     }
 
     public function testOnNavigationPageLoadedAcceptsScalarOneAsActive(): void
     {
         $category = new CategoryEntity();
-        $category->setId('category-id-balkongelaender');
-        // Shopware speichert Checkbox-Werte aus dem Admin als Integer 1 — analog zu der Live-DB-Spalte.
-        $category->setCustomFields(['rc_show_minimalistic_productlist' => 1]);
-
+        $category->setId(self::CATEGORY_ID);
+        // So speichert die Administration ein gesetztes Kontrollkästchen.
+        $category->setCustomFields([LayoutDecision::CUSTOM_FIELD_KEY => 1]);
         $page = $this->createNavigationPage($category);
-        $event = $this->createNavigationEvent($page);
 
-        $repository = $this->createMock(EntityRepository::class);
-        $subscriber = $this->subscriber($repository);
-        $subscriber->onNavigationPageLoaded($event);
+        $this->subscriber($this->createMock(EntityRepository::class))
+            ->onNavigationPageLoaded($this->createNavigationEvent($page));
 
-        /** @var ArrayStruct<array<string, mixed>> $extension */
-        $extension = $page->getExtension('rcMinimalisticLayout');
-        self::assertTrue($extension->get('active'));
+        self::assertTrue($this->layoutFlagOf($page));
     }
 
     public function testOnNavigationPageLoadedWithoutCategoryStaysInactive(): void
     {
         $page = new NavigationPage();
-        // Kein setCategory()-Aufruf — Page hat keine Listing-Kategorie (z. B. fehlerhafter Aufruf-Pfad).
-        $event = $this->createNavigationEvent($page);
 
-        $repository = $this->createMock(EntityRepository::class);
-        $subscriber = $this->subscriber($repository);
-        $subscriber->onNavigationPageLoaded($event);
+        $this->subscriber($this->createMock(EntityRepository::class))
+            ->onNavigationPageLoaded($this->createNavigationEvent($page));
 
-        /** @var ArrayStruct<array<string, mixed>> $extension */
-        $extension = $page->getExtension('rcMinimalisticLayout');
-        self::assertFalse($extension->get('active'));
+        self::assertFalse($this->layoutFlagOf($page));
     }
 
     public function testGenericPageStaysUntouchedInCategoryScope(): void
     {
         $page = new Page();
-        $subscriber = $this->subscriber($this->createMock(EntityRepository::class));
 
-        $subscriber->onGenericPageLoaded($this->createGenericEvent($page));
+        $this->subscriber($this->createMock(EntityRepository::class))
+            ->onGenericPageLoaded($this->createGenericEvent($page));
 
-        self::assertFalse($page->hasExtension('rcMinimalisticLayout'));
+        self::assertFalse($page->hasExtension(ListingLayoutSubscriber::EXTENSION_NAME));
     }
 
     /**
-     * Der Fall aus der Praxis: die Startseite hat keine markierte Kategorie. Im Geltungsbereich
-     * „Alle Seiten" bekommt sie den Schalter trotzdem — genauso Produktseiten mit Cross-Selling.
+     * Die Startseite hat keine markierte Kategorie und bekommt den Schalter im Geltungsbereich
+     * „Alle Seiten“ trotzdem.
      */
     public function testGenericPageGetsTheFlagWhenScopeIsAll(): void
     {
         $page = new Page();
-        $subscriber = $this->subscriber($this->createMock(EntityRepository::class), LayoutDecision::SCOPE_ALL);
 
-        $subscriber->onGenericPageLoaded($this->createGenericEvent($page));
+        $this->subscriber($this->createMock(EntityRepository::class), LayoutScope::All)
+            ->onGenericPageLoaded($this->createGenericEvent($page));
 
-        /** @var ArrayStruct<array<string, mixed>> $extension */
-        $extension = $page->getExtension('rcMinimalisticLayout');
-        self::assertTrue($extension->get('active'));
+        self::assertTrue($this->layoutFlagOf($page));
     }
 
     public function testListingResultSkipsTheCategoryLookupWhenScopeIsAll(): void
     {
         $repository = $this->createMock(EntityRepository::class);
         $repository->expects($this->never())->method('search');
+        $event = $this->createListingEvent(self::CATEGORY_ID);
 
-        $subscriber = $this->subscriber($repository, LayoutDecision::SCOPE_ALL);
-        $event = $this->createListingEvent('category-id-123');
+        $this->subscriber($repository, LayoutScope::All)->onListingResult($event);
 
-        $subscriber->onListingResult($event);
-
-        /** @var ArrayStruct<array<string, mixed>> $extension */
-        $extension = $event->getResult()->getExtension('rcMinimalisticLayout');
-        self::assertTrue($extension->get('active'));
+        self::assertTrue($this->layoutFlagOf($event->getResult()));
     }
 
     public function testListingResultStaysInactiveWhenScopeIsOff(): void
     {
         $repository = $this->createMock(EntityRepository::class);
         $repository->expects($this->never())->method('search');
+        $event = $this->createListingEvent(self::CATEGORY_ID);
 
-        $subscriber = $this->subscriber($repository, LayoutDecision::SCOPE_OFF);
-        $event = $this->createListingEvent('category-id-123');
+        $this->subscriber($repository, LayoutScope::Off)->onListingResult($event);
 
-        $subscriber->onListingResult($event);
-
-        /** @var ArrayStruct<array<string, mixed>> $extension */
-        $extension = $event->getResult()->getExtension('rcMinimalisticLayout');
-        self::assertFalse($extension->get('active'));
+        self::assertFalse($this->layoutFlagOf($event->getResult()));
     }
 
     public function testOnListingResultWithoutNavigationIdDoesNothing(): void
     {
         $repository = $this->createMock(EntityRepository::class);
         $repository->expects($this->never())->method('search');
-
-        $subscriber = $this->subscriber($repository);
         $event = $this->createListingEvent(null);
 
-        $subscriber->onListingResult($event);
+        $this->subscriber($repository)->onListingResult($event);
 
-        self::assertFalse($event->getResult()->hasExtension('rcMinimalisticLayout'));
+        self::assertFalse($event->getResult()->hasExtension(ListingLayoutSubscriber::EXTENSION_NAME));
     }
 
     public function testOnListingResultWithNonStringNavigationIdDoesNothing(): void
@@ -237,95 +287,61 @@ final class ListingLayoutSubscriberTest extends TestCase
         $repository = $this->createMock(EntityRepository::class);
         $repository->expects($this->never())->method('search');
 
-        $subscriber = $this->subscriber($repository);
-
         $request = new Request();
-        $request->attributes->set('navigationId', 12345);
+        $request->attributes->set(self::NAVIGATION_ID_ATTRIBUTE, 12345);
         $event = $this->createListingEventWithRequest($request);
 
-        $subscriber->onListingResult($event);
+        $this->subscriber($repository)->onListingResult($event);
 
-        self::assertFalse($event->getResult()->hasExtension('rcMinimalisticLayout'));
+        self::assertFalse($event->getResult()->hasExtension(ListingLayoutSubscriber::EXTENSION_NAME));
     }
 
     public function testOnListingResultWithUnknownCategoryDoesNothing(): void
     {
         $repository = $this->createMock(EntityRepository::class);
-        $repository->method('search')->willReturn(
-            $this->createSearchResult(null),
-        );
+        $repository->method('search')->willReturn($this->createSearchResult(null));
+        $event = $this->createListingEvent(self::CATEGORY_ID);
 
-        $subscriber = $this->subscriber($repository);
-        $event = $this->createListingEvent('category-id-123');
+        $this->subscriber($repository)->onListingResult($event);
 
-        $subscriber->onListingResult($event);
-
-        self::assertFalse($event->getResult()->hasExtension('rcMinimalisticLayout'));
+        self::assertFalse($event->getResult()->hasExtension(ListingLayoutSubscriber::EXTENSION_NAME));
     }
 
     public function testOnListingResultWithActiveCustomFieldSetsExtension(): void
     {
-        $category = new CategoryEntity();
-        $category->setId('category-id-123');
-        $category->setCustomFields(['rc_show_minimalistic_productlist' => true]);
-
         $repository = $this->createMock(EntityRepository::class);
-        $repository->method('search')->willReturn(
-            $this->createSearchResult($category),
-        );
+        $repository->method('search')->willReturn($this->createSearchResult($this->category(true)));
+        $event = $this->createListingEvent(self::CATEGORY_ID);
 
-        $subscriber = $this->subscriber($repository);
-        $event = $this->createListingEvent('category-id-123');
+        $this->subscriber($repository)->onListingResult($event);
 
-        $subscriber->onListingResult($event);
-
-        self::assertTrue($event->getResult()->hasExtension('rcMinimalisticLayout'));
-
-        /** @var ArrayStruct<array<string, mixed>> $extension */
-        $extension = $event->getResult()->getExtension('rcMinimalisticLayout');
-        self::assertTrue($extension->get('active'));
+        self::assertTrue($this->layoutFlagOf($event->getResult()));
     }
 
     public function testOnListingResultWithInactiveCustomFieldSetsExtensionFalse(): void
     {
-        $category = new CategoryEntity();
-        $category->setId('category-id-123');
-        $category->setCustomFields(['rc_show_minimalistic_productlist' => false]);
-
         $repository = $this->createMock(EntityRepository::class);
-        $repository->method('search')->willReturn(
-            $this->createSearchResult($category),
-        );
+        $repository->method('search')->willReturn($this->createSearchResult($this->category(false)));
+        $event = $this->createListingEvent(self::CATEGORY_ID);
 
-        $subscriber = $this->subscriber($repository);
-        $event = $this->createListingEvent('category-id-123');
+        $this->subscriber($repository)->onListingResult($event);
 
-        $subscriber->onListingResult($event);
-
-        /** @var ArrayStruct<array<string, mixed>> $extension */
-        $extension = $event->getResult()->getExtension('rcMinimalisticLayout');
-        self::assertFalse($extension->get('active'));
+        self::assertFalse($this->layoutFlagOf($event->getResult()));
     }
 
     public function testOnListingResultWithMissingCustomFieldSetsExtensionFalse(): void
     {
         $category = new CategoryEntity();
-        $category->setId('category-id-123');
+        $category->setId(self::CATEGORY_ID);
         $category->setCustomFields([]);
 
         $repository = $this->createMock(EntityRepository::class);
-        $repository->method('search')->willReturn(
-            $this->createSearchResult($category),
-        );
+        $repository->method('search')->willReturn($this->createSearchResult($category));
+        $event = $this->createListingEvent(self::CATEGORY_ID);
 
-        $subscriber = $this->subscriber($repository);
-        $event = $this->createListingEvent('category-id-123');
+        $this->subscriber($repository)->onListingResult($event);
 
-        $subscriber->onListingResult($event);
-
-        /** @var ArrayStruct<array<string, mixed>> $extension */
-        $extension = $event->getResult()->getExtension('rcMinimalisticLayout');
-        self::assertFalse($extension->get('active'));
+        self::assertFalse($this->layoutFlagOf($event->getResult()));
     }
 
     /**
@@ -333,12 +349,74 @@ final class ListingLayoutSubscriberTest extends TestCase
      */
     private function subscriber(
         EntityRepository $repository,
-        string $scope = LayoutDecision::SCOPE_CATEGORIES,
+        LayoutScope $scope = LayoutScope::Categories,
     ): ListingLayoutSubscriber {
         $systemConfigService = $this->createMock(SystemConfigService::class);
-        $systemConfigService->method('getString')->willReturn($scope);
+        $systemConfigService->method('getString')->willReturn($scope->value);
 
         return new ListingLayoutSubscriber($repository, new LayoutDecision($systemConfigService));
+    }
+
+    private function category(bool $marked): CategoryEntity
+    {
+        $category = new CategoryEntity();
+        $category->setId(self::CATEGORY_ID);
+        $category->setCustomFields([LayoutDecision::CUSTOM_FIELD_KEY => $marked]);
+
+        return $category;
+    }
+
+    private function layoutFlagOf(Struct $target): mixed
+    {
+        $extension = $target->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
+        self::assertInstanceOf(ArrayStruct::class, $extension);
+
+        return $extension->get('active');
+    }
+
+    /**
+     * @return array{ProductPage, Request}
+     */
+    private function productPageThroughSubscriber(?CategoryEntity $seoCategory, LayoutScope $scope): array
+    {
+        $product = new SalesChannelProductEntity();
+        if ($seoCategory !== null) {
+            $product->setSeoCategory($seoCategory);
+        }
+
+        $page = new ProductPage();
+        $page->setProduct($product);
+        $request = new Request();
+
+        $this->subscriber($this->createMock(EntityRepository::class), $scope)
+            ->onProductPageLoaded(new ProductPageLoadedEvent($page, $this->createSalesChannelContext(), $request));
+
+        return [$page, $request];
+    }
+
+    private function storefrontRequest(?string $navigationId): Request
+    {
+        $request = new Request();
+        $request->attributes->set(
+            PlatformRequest::ATTRIBUTE_SALES_CHANNEL_CONTEXT_OBJECT,
+            $this->createSalesChannelContext(),
+        );
+
+        if ($navigationId !== null) {
+            $request->attributes->set(self::NAVIGATION_ID_ATTRIBUTE, $navigationId);
+        }
+
+        return $request;
+    }
+
+    private function controllerEvent(Request $request): ControllerEvent
+    {
+        return new ControllerEvent(
+            $this->createMock(HttpKernelInterface::class),
+            static fn (): ?Response => null,
+            $request,
+            HttpKernelInterface::MAIN_REQUEST,
+        );
     }
 
     private function createGenericEvent(Page $page): GenericPageLoadedEvent
@@ -372,7 +450,7 @@ final class ListingLayoutSubscriberTest extends TestCase
     {
         $request = new Request();
         if ($navigationId !== null) {
-            $request->attributes->set('navigationId', $navigationId);
+            $request->attributes->set(self::NAVIGATION_ID_ATTRIBUTE, $navigationId);
         }
 
         return $this->createListingEventWithRequest($request);
@@ -380,21 +458,16 @@ final class ListingLayoutSubscriberTest extends TestCase
 
     private function createListingEventWithRequest(Request $request): ProductListingResultEvent
     {
-        $context = Context::createDefaultContext();
         $result = new ProductListingResult(
             'product',
             0,
             new ProductCollection(),
             null,
             new Criteria(),
-            $context,
+            Context::createDefaultContext(),
         );
 
-        return new ProductListingResultEvent(
-            $request,
-            $result,
-            $this->createSalesChannelContext(),
-        );
+        return new ProductListingResultEvent($request, $result, $this->createSalesChannelContext());
     }
 
     /**

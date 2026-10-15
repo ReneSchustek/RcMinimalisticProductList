@@ -16,7 +16,9 @@ Wo das gilt, bestimmt die Plugin-Einstellung **Geltungsbereich** (je Verkaufskan
 | **Alle Seiten** | Überall, ohne Zusatzfeld: Kategorielistings, Produkt-Slider auf der Startseite, Cross-Selling auf Produktseiten, Suche. |
 | **Aus** | Das Plugin ändert nichts. |
 
-Technisch hängt das Plugin den Schalter als Extension `rcMinimalisticLayout` an die Seite (jede Storefront-Seite bzw. die Kategorieseite) und an das Listing-Ergebnis; das Twig-Template lädt bei `active = true` das reduzierte Layout. Das greift auch für Produktkacheln in CMS-Elementen derselben Seite.
+Auf der **Produktseite** folgen Cross-Selling und Produkt-Slider im Geltungsbereich „Einzelne Kategorien“ der SEO-Kategorie des Artikels: Trägt sie das Zusatzfeld, zeigen auch diese Kacheln nur Bild, Titel und Preis.
+
+Technisch legt das Plugin die Entscheidung an zwei Stellen ab. Vor dem Seitenaufbau steht sie als Request-Attribut `rcMinimalisticLayoutActive` am Request; zusätzlich hängt sie als Extension `rcMinimalisticLayout` (Feld `active`) an der Seite und am Listing-Ergebnis. Die Produktkachel fragt zuerst den Request und fällt auf die Extension der Seite zurück; bei `active = true` lädt sie das reduzierte Layout. Das greift auch für Produktkacheln in CMS-Elementen derselben Seite.
 
 Funktioniert sowohl beim initialen Seitenaufruf als auch beim AJAX-Reload bei Filterung, Sortierung und Blättern.
 
@@ -33,15 +35,25 @@ Funktioniert sowohl beim initialen Seitenaufruf als auch beim AJAX-Reload bei Fi
 
 Das Plugin gehört als Ordner `custom/plugins/RcMinimalisticProductList` in die Shopware-Installation. Übertragen wird er von Hand per FTP in dieses Verzeichnis, ein Composer-Paket gibt es nicht. Danach registriert Shopware ihn über die folgenden Befehle:
 
-Als Archiv geht es auch ohne FTP: In der Administration unter **Erweiterungen → Meine Erweiterungen → Erweiterung hochladen** nimmt Shopware eine ZIP-Datei entgegen und legt sie selbst an die richtige Stelle; auf der Konsole tut `plugin:zip-import` dasselbe. Danach folgen dieselben Schritte wie unten. Wer das Archiv unter macOS packt, entfernt vorher den Ordner `__MACOSX`, sonst weist Shopware die Datei ab.
-
 ```bash
 php bin/console plugin:refresh
 php bin/console plugin:install --activate RcMinimalisticProductList
 php bin/console cache:clear
 ```
 
-**Aktualisierungen laufen denselben Weg.** Den neuen Ordner per FTP über den alten legen, danach `plugin:refresh` und `plugin:update RcMinimalisticProductList`. Eine Aktualisierung von selbst gibt es nicht: Ohne Composer-Paket und ohne Shopware-Store bleibt sie Sache des Betreibers. Vor einem Sprung über eine Hauptversion gehört ein Datenbank-Abzug dazu.
+Als Archiv geht es auch ohne FTP: In der Administration unter **Erweiterungen → Meine Erweiterungen → Erweiterung hochladen** nimmt Shopware eine ZIP-Datei entgegen und legt sie selbst an die richtige Stelle; auf der Konsole tut `plugin:zip-import` dasselbe. Danach folgen dieselben Befehle wie oben. Wer das Archiv unter macOS packt, entfernt vorher den Ordner `__MACOSX`, sonst weist Shopware die Datei ab.
+
+### Update
+
+Aktualisierungen laufen denselben Weg: den neuen Ordner per FTP über den alten legen, danach
+
+```bash
+php bin/console plugin:refresh
+php bin/console plugin:update RcMinimalisticProductList
+php bin/console cache:clear
+```
+
+Ob zusätzlich `theme:compile` nötig ist, steht im Deployment-Hinweis der jeweiligen Fassung im [CHANGELOG](CHANGELOG.md). Eine Aktualisierung von selbst gibt es nicht: Ohne Composer-Paket und ohne Shopware-Store bleibt sie Sache des Betreibers. Vor einem Sprung über eine Hauptversion gehört ein Datenbank-Abzug dazu.
 
 ---
 
@@ -53,7 +65,7 @@ php bin/console cache:clear
 
 | Feld | Beschreibung |
 |------|-------------|
-| Minimalistic Productlist anzeigen | Aktiviert das reduzierte Layout für diese Kategorie (nur im Geltungsbereich „Einzelne Kategorien") |
+| Eine minimalistische Produktliste anzeigen | Aktiviert das reduzierte Layout für diese Kategorie (nur im Geltungsbereich „Einzelne Kategorien") |
 
 Für die Startseite ist die zuständige Kategorie die Navigations-Wurzel des Verkaufskanals (oft „Hauptkategorien").
 
@@ -84,10 +96,10 @@ sich. Soll das minimalistische Layout einmal als A/B-Variante laufen, gehört di
 Template, nicht in einen zweiten Subscriber, etwa so:
 
 ```twig
-{% set minimalistisch = app.request.attributes.get('rcMinimalisticLayoutActive')
+{% set minimalistic = app.request.attributes.get('rcMinimalisticLayoutActive')
     ?? (page.extensions.rcMinimalisticLayout.active ?? false) %}
 {% if ab_variant('listing-layout') is not null %}
-    {% set minimalistisch = ab_variant_config('listing_layout') == 'minimal' %}
+    {% set minimalistic = ab_variant_config('listing_layout') == 'minimal' %}
 {% endif %}
 ```
 
@@ -97,16 +109,6 @@ Feld dauerhaft aus dem Test heraus und das Ergebnis wäre verzerrt.
 **Nicht abgedeckt:** ein Integration-Test für dieses Zusammenspiel. Er braucht auf beiden Seiten
 etwas, das es noch nicht gibt: einen Listing-Schalter in RcAbTesting und die Template-Abfrage hier.
 Sobald der Schalter existiert, ist dieser Abschnitt der Ort, an dem nachgezogen wird.
-
----
-
-## Update
-
-```bash
-php bin/console plugin:refresh
-php bin/console plugin:update RcMinimalisticProductList
-php bin/console cache:clear
-```
 
 ---
 

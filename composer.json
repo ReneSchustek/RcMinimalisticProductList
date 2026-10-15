@@ -2,7 +2,7 @@
     "name": "ruhrcoder/rc-minimalistic-product-list",
     "description": "Shows a minimalistic product list",
     "type": "shopware-platform-plugin",
-    "version": "1.4.0",
+    "version": "1.4.1",
     "license": "MIT",
     "authors": [
         {
@@ -29,7 +29,7 @@
         },
         "description": {
             "de-DE": "Zeigt eine Produktliste an, die nur aus Bild, Titel und Preis besteht.",
-            "en-GB": "Shows a productlist which only contains picture, title and price."
+            "en-GB": "Shows a product list which only contains picture, title and price."
         },
         "remarks": {
             "de-DE": "Minimalistische Produktliste anzeigen.",

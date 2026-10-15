@@ -7,6 +7,8 @@ namespace Ruhrcoder\RcMinimalisticProductList\Tests\Unit\Service;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Ruhrcoder\RcMinimalisticProductList\Service\CustomFieldsInstaller;
+use Ruhrcoder\RcMinimalisticProductList\Service\LayoutDecision;
+use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
@@ -18,6 +20,10 @@ use Shopware\Core\System\CustomField\Aggregate\CustomFieldSetRelation\CustomFiel
 use Shopware\Core\System\CustomField\CustomFieldCollection;
 use Shopware\Core\System\CustomField\CustomFieldEntity;
 
+/**
+ * Prüft, dass der Installer in einem frischen wie in einem bestehenden Shop durchläuft: Vorhandene IDs
+ * gehen in die Nutzlast, damit kein Upsert am eindeutigen Namen scheitert.
+ */
 final class CustomFieldsInstallerTest extends TestCase
 {
     /** @var EntityRepository<CustomFieldSetCollection>&MockObject */
@@ -35,7 +41,7 @@ final class CustomFieldsInstallerTest extends TestCase
         $this->fieldRepository = $this->createMock(EntityRepository::class);
         $this->context = Context::createDefaultContext();
 
-        // Defaults: greenfield — kein Set, keine Felder.
+        // Ausgangslage ist ein frischer Shop ohne Set und ohne Felder.
         $this->setRepository->method('search')->willReturn($this->emptySetSearchResult());
         $this->fieldRepository->method('search')->willReturn($this->emptyFieldSearchResult());
     }
@@ -43,6 +49,29 @@ final class CustomFieldsInstallerTest extends TestCase
     public function testInstallCallsUpsertOnRepository(): void
     {
         $this->setRepository->expects($this->once())->method('upsert');
+
+        $this->makeInstaller()->install($this->context);
+    }
+
+    /**
+     * Ohne Eintrag für die Systemsprache stünde in einem Shop, dessen Standardsprache weder Deutsch noch
+     * Englisch ist, kein Text unter dem Feld.
+     */
+    public function testInstallLabelsTheFieldInEveryLanguageIncludingTheSystemLanguage(): void
+    {
+        $this->setRepository->expects($this->once())
+            ->method('upsert')
+            ->with($this->callback(function (array $payload): bool {
+                $fieldConfig = $payload[0]['customFields'][0]['config'];
+
+                foreach (['label', 'helpText'] as $text) {
+                    self::assertArrayHasKey('de-DE', $fieldConfig[$text]);
+                    self::assertArrayHasKey('en-GB', $fieldConfig[$text]);
+                    self::assertArrayHasKey(Defaults::LANGUAGE_SYSTEM, $fieldConfig[$text], $text);
+                }
+
+                return true;
+            }));
 
         $this->makeInstaller()->install($this->context);
     }
@@ -57,7 +86,7 @@ final class CustomFieldsInstallerTest extends TestCase
 
         $existingField = new CustomFieldEntity();
         $existingField->setId('field-id-existing');
-        $existingField->setName('rc_show_minimalistic_productlist');
+        $existingField->setName(LayoutDecision::CUSTOM_FIELD_KEY);
         $existingField->setType('bool');
 
         $fieldResult = $this->createMock(EntitySearchResult::class);
@@ -113,7 +142,6 @@ final class CustomFieldsInstallerTest extends TestCase
     {
         $existingSet = new CustomFieldSetEntity();
         $existingSet->setId('set-id-new');
-        // Keine Relations gesetzt → null.
 
         $setResult = $this->createMock(EntitySearchResult::class);
         $setResult->method('getEntities')->willReturn(new CustomFieldSetCollection([$existingSet]));

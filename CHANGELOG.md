@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.4.1] - 2026-10-15 — Aufgeräumt, Beschriftungen vollständig
+
+> **Deployment:** `php bin/console plugin:update RcMinimalisticProductList && php bin/console theme:compile && php bin/console cache:clear`.
+
+### Geändert
+
+- **SCSS-Variablen englisch benannt:** `$rc-product-name-lines`, `$rc-product-name-line-height`, `$rc-price-block-lines`,
+  `$rc-price-block-line-height` (vorher deutsch). Ein Theme, das sie überschreibt, muss die neuen Namen setzen.
+- **Das Zusatzfeld an der Kategorie ist in jeder Sprache beschriftet.** Der Hilfetext unter dem Häkchen fehlte in
+  Shops, deren Standardsprache weder Deutsch noch Englisch ist; er erscheint dort jetzt auf Englisch. Die englische
+  Beschriftung schreibt „product list“ getrennt.
+- Die Hilfetexte der Einstellung „Geltungsbereich“ nennen das Zusatzfeld mit seinem tatsächlichen Namen
+  („Eine minimalistische Produktliste anzeigen“).
+- Interne Aufräumarbeiten ohne sichtbare Wirkung im Shop: Die Entscheidung für Seitenaufruf und Nachladen läuft über
+  eine gemeinsame Stelle, die drei Geltungsbereiche sind als feste Auswahl hinterlegt.
+
+### Tests
+
+- Installation, Update, Aktivierung und Deinstallation (mit und ohne behaltene Daten) sind jetzt geprüft, ebenso die
+  Produktseite in allen drei Geltungsbereichen und die Entscheidung vor dem Seitenaufbau.
+
 ## [1.4.0] - 2026-10-14 — Minimalliste auch im Querverkauf der Produktseite
 
 > **Deployment:** `plugin:update RcMinimalisticProductList`, `cache:clear`.
@@ -11,6 +32,8 @@
   Entscheidung nur bei Kategorie-Aufrufen fiel.
 
 ## [1.3.5] - 2026-10-09 — Blättern bleibt schlank, die Zusatzfelder heißen wie die Erweiterung
+
+> **Deployment:** `php bin/console plugin:update RcMinimalisticProductList && php bin/console cache:clear`.
 
 ### Behoben
 
@@ -26,6 +49,8 @@
 
 ## [1.3.4] - 2026-08-27 — Gleich hohe Kacheln, auch wenn eine Preiszeile fehlt
 
+> **Deployment:** `php bin/console plugin:update RcMinimalisticProductList && php bin/console theme:compile && php bin/console cache:clear`. Theme-Compile Pflicht.
+
 ### Behoben
 
 - **Im Slider standen Kacheln unterschiedlicher Höhe nebeneinander.** Auf einer Kategorieseite
@@ -38,11 +63,15 @@
 
 ## [1.3.3] - 2026-08-10 — Vorbereitet auf die nächste Shopware-Hauptversion
 
+> **Deployment:** `php bin/console plugin:update RcMinimalisticProductList && php bin/console cache:clear`.
+
 ### Geändert
 
 - **Vorbereitung auf die nächste Shopware-Hauptversion.** Der Zugriff auf Suchergebnisse folgt der Schreibweise, die Shopware 6.8 verlangt. Am Verhalten ändert sich nichts.
 
 ## [1.3.2] - 2026-08-03 — Gleich hohe Kacheln, unabhängig von der Namenslänge
+
+> **Deployment:** `php bin/console plugin:update RcMinimalisticProductList && php bin/console theme:compile && php bin/console cache:clear`. Theme-Compile Pflicht.
 
 Im Produkt-Slider sprang die Kachelhöhe: Ein Artikel, dessen Name in eine Zeile passte, stand
 22 Pixel flacher als seine Nachbarn.

@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Ruhrcoder\RcMinimalisticProductList\Tests\Integration;
 
+use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Ruhrcoder\RcMinimalisticProductList\Service\LayoutDecision;
+use Ruhrcoder\RcMinimalisticProductList\Service\LayoutScope;
 use Ruhrcoder\RcMinimalisticProductList\Subscriber\ListingLayoutSubscriber;
+use Shopware\Core\Content\Category\CategoryCollection;
 use Shopware\Core\Content\Category\CategoryEntity;
 use Shopware\Core\Content\Product\Events\ProductListingResultEvent;
+use Shopware\Core\Content\Product\ProductCollection;
 use Shopware\Core\Content\Product\SalesChannel\Listing\ProductListingResult;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
@@ -18,6 +22,8 @@ use Shopware\Core\Framework\Struct\ArrayStruct;
 use Shopware\Core\Framework\Test\TestCaseBase\IntegrationTestBehaviour;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\PlatformRequest;
+use Shopware\Core\System\SalesChannel\Context\AbstractSalesChannelContextFactory;
+use Shopware\Core\System\SalesChannel\Context\SalesChannelContextFactory;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Shopware\Storefront\Page\GenericPageLoadedEvent;
@@ -30,14 +36,12 @@ use Symfony\Component\HttpKernel\Event\ControllerEvent;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 
 /**
- * Prüft die beiden Wege, auf denen das Listing-Layout gesetzt wird, gegen eine echte Datenbank
- * und einen echten Kernel.
+ * Prüft die Wege, auf denen das Listing-Layout gesetzt wird (Controller, Seitenaufruf, Listing-Ergebnis,
+ * jede Storefront-Seite), gegen eine echte Datenbank und einen echten Kernel.
  *
- * Warum das nötig ist: Der Hotfix v1.2.3 hat einen zweiten Subscriber-Pfad eingeführt, und der
- * AJAX-Pfad lädt seine Kategorie selbst aus der Datenbank. Genau dort steckte schon einmal ein
- * Fehler, den kein Unit-Test finden konnte — mit `Criteria::addFields()` liefert der Hydrator eine
- * `PartialEntity` statt einer `CategoryEntity`, der Typ-Guard schlug fehl und die Erweiterung wurde
- * beim Nachladen von Filtern nie gesetzt. Ein Mock hätte weiterhin eine `CategoryEntity` geliefert.
+ * Der Nachlade-Weg lädt seine Kategorie selbst. Mit `Criteria::addFields()` lieferte der Hydrator dort
+ * eine `PartialEntity` statt einer `CategoryEntity`, und die Erweiterung fehlte beim Filtern. Ein Mock
+ * gäbe weiterhin eine `CategoryEntity` zurück; nur die echte Datenbank zeigt den Fehler.
  */
 #[CoversClass(ListingLayoutSubscriber::class)]
 #[CoversClass(LayoutDecision::class)]
@@ -45,292 +49,245 @@ final class ListingLayoutSubscriberIntegrationTest extends TestCase
 {
     use IntegrationTestBehaviour;
 
-    private const CUSTOM_FIELD = LayoutDecision::CUSTOM_FIELD_KEY;
-
-    private const CONFIG_KEY = 'RcMinimalisticProductList.config.scope';
+    private const NAVIGATION_ID_ATTRIBUTE = 'navigationId';
 
     /**
-     * Was: Kategorie mit gesetztem Merkmal, geladen über den AJAX-Pfad.
-     * Warum: Das ist der Weg, der beim Nachladen von Filtern und Seiten läuft — und der Pfad, der
-     *        schon einmal still ausgefallen ist.
-     * Erwartet: Die Erweiterung sitzt am Ergebnis und meldet `active`.
+     * Der Nachlade-Weg beim Filtern und Blättern, mit einer Kategorie, die das Merkmal trägt.
      */
-    public function testAjaxPathSetsTheExtensionForACategoryWithTheFlag(): void
+    public function testListingPathSetsTheExtensionForACategoryWithTheFlag(): void
     {
-        $kategorieId = $this->createCategory(true);
+        $categoryId = $this->createCategory(true);
 
-        $result = $this->listingResultThroughSubscriber($kategorieId);
+        $extension = $this->listingResultThroughSubscriber($categoryId)
+            ->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
 
-        $erweiterung = $result->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
-        static::assertInstanceOf(ArrayStruct::class, $erweiterung);
-        static::assertTrue($erweiterung->get('active'));
+        static::assertInstanceOf(ArrayStruct::class, $extension);
+        static::assertTrue($extension->get('active'));
     }
 
     /**
-     * Was: Kategorie ohne das Merkmal.
-     * Warum: Gegenprobe — ohne sie würde ein Test, der immer `active` liefert, ebenfalls grün sein.
-     * Erwartet: Erweiterung gesetzt, aber nicht aktiv.
+     * Gegenprobe: Ohne sie bestünde auch ein Subscriber, der immer `active` meldet.
      */
     public function testWithoutTheFlagTheDefaultLayoutRemains(): void
     {
-        $kategorieId = $this->createCategory(false);
+        $extension = $this->listingResultThroughSubscriber($this->createCategory(false))
+            ->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
 
-        $erweiterung = $this->listingResultThroughSubscriber($kategorieId)->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
-
-        static::assertInstanceOf(ArrayStruct::class, $erweiterung);
-        static::assertFalse($erweiterung->get('active'));
+        static::assertInstanceOf(ArrayStruct::class, $extension);
+        static::assertFalse($extension->get('active'));
     }
 
     /**
-     * Was: Eine Unterkategorie, deren Elternkategorie das Merkmal trägt.
-     * Warum: Ob sich das Merkmal vererbt, stand bisher nirgends fest — dieser Test
-     *        hält die Antwort fest, statt sie im Kopf zu behalten.
-     * Erwartet: **keine Vererbung.** Das Merkmal wirkt nur an der Kategorie, an der es gesetzt ist.
+     * Das Merkmal vererbt sich nicht: Es wirkt nur an der Kategorie, an der es gesetzt ist.
      */
     public function testTheFlagIsNotInheritedBySubcategories(): void
     {
-        $elternId = $this->createCategory(true);
-        $kindId = $this->createCategory(false, $elternId);
+        $parentId = $this->createCategory(true);
+        $childId = $this->createCategory(false, $parentId);
 
-        $erweiterung = $this->listingResultThroughSubscriber($kindId)->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
+        $extension = $this->listingResultThroughSubscriber($childId)
+            ->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
 
-        static::assertInstanceOf(ArrayStruct::class, $erweiterung);
+        static::assertInstanceOf(ArrayStruct::class, $extension);
         static::assertFalse(
-            $erweiterung->get('active'),
-            'Wenn sich das Merkmal doch vererben soll, ist das eine Entscheidung -- und dieser Test der Ort dafür.'
+            $extension->get('active'),
+            'Soll sich das Merkmal vererben, ist das eine Entscheidung, und dieser Test der Ort dafür.',
         );
     }
 
     /**
-     * Was: Geltungsbereich „alle Seiten".
-     * Warum: In diesem Modus darf der AJAX-Pfad die Datenbank gar nicht erst befragen.
-     * Erwartet: aktiv, ohne dass eine Kategorie im Spiel ist.
+     * Im Geltungsbereich „Alle Seiten“ braucht der Nachlade-Weg keine Kategorie und keine Datenbank.
      */
     public function testScopeAllPagesNeedsNoCategory(): void
     {
-        $vorher = $this->geltungsbereichSetzen('all');
+        $previous = $this->setScope(LayoutScope::All->value);
 
         try {
-            $result = $this->listingResultThroughSubscriber(null);
-            $erweiterung = $result->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
+            $extension = $this->listingResultThroughSubscriber(null)
+                ->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
 
-            static::assertInstanceOf(ArrayStruct::class, $erweiterung);
-            static::assertTrue($erweiterung->get('active'));
+            static::assertInstanceOf(ArrayStruct::class, $extension);
+            static::assertTrue($extension->get('active'));
         } finally {
-            $this->geltungsbereichSetzen($vorher);
+            $this->setScope($previous);
         }
     }
 
     /**
-     * Was: Geltungsbereich „aus".
-     * Warum: Der Schalter muss auch dann greifen, wenn eine Kategorie das Merkmal trägt.
-     * Erwartet: nicht aktiv.
+     * „Aus“ greift auch an einer Kategorie, die das Merkmal trägt.
      */
-    public function testGeltungsbereichAusSchlaegtDasMerkmal(): void
+    public function testScopeOffOverridesTheCustomField(): void
     {
-        $kategorieId = $this->createCategory(true);
-        $vorher = $this->geltungsbereichSetzen('off');
+        $categoryId = $this->createCategory(true);
+        $previous = $this->setScope(LayoutScope::Off->value);
 
         try {
-            $erweiterung = $this->listingResultThroughSubscriber($kategorieId)->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
+            $extension = $this->listingResultThroughSubscriber($categoryId)
+                ->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
 
-            static::assertInstanceOf(ArrayStruct::class, $erweiterung);
-            static::assertFalse($erweiterung->get('active'));
+            static::assertInstanceOf(ArrayStruct::class, $extension);
+            static::assertFalse($extension->get('active'));
         } finally {
-            $this->geltungsbereichSetzen($vorher);
+            $this->setScope($previous);
         }
     }
 
-
-    /**
-     * Was: Der Seitenaufruf-Pfad (`NavigationPageLoadedEvent`) mit einer Kategorie, die das Merkmal
-     *      trägt.
-     * Warum: Das ist der Pfad des ersten Seitenaufrufs -- der AJAX-Pfad greift erst beim Nachladen.
-     *        Beide Pfade gehören geprüft, weil der Hotfix v1.2.3 sie auseinandergezogen hat.
-     * Erwartet: Die Erweiterung sitzt an der Seite und meldet `active`.
-     */
     public function testNavigationPagePathSetsTheExtension(): void
     {
-        $kategorieId = $this->createCategory(true);
-
-        $page = $this->navigationPageThroughSubscriber($kategorieId);
-
-        $erweiterung = $page->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
-        static::assertInstanceOf(ArrayStruct::class, $erweiterung);
-        static::assertTrue($erweiterung->get('active'));
-    }
-
-    /**
-     * Was: Derselbe Pfad mit einer Kategorie ohne Merkmal.
-     * Warum: Gegenprobe zum vorigen Test.
-     * Erwartet: gesetzt, aber nicht aktiv.
-     */
-    public function testNavigationPagePathWithoutTheFlagStaysDefault(): void
-    {
-        $erweiterung = $this->navigationPageThroughSubscriber($this->createCategory(false))
+        $extension = $this->navigationPageThroughSubscriber($this->createCategory(true))
             ->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
 
-        static::assertInstanceOf(ArrayStruct::class, $erweiterung);
-        static::assertFalse($erweiterung->get('active'));
+        static::assertInstanceOf(ArrayStruct::class, $extension);
+        static::assertTrue($extension->get('active'));
+    }
+
+    public function testNavigationPagePathWithoutTheFlagStaysDefault(): void
+    {
+        $extension = $this->navigationPageThroughSubscriber($this->createCategory(false))
+            ->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
+
+        static::assertInstanceOf(ArrayStruct::class, $extension);
+        static::assertFalse($extension->get('active'));
     }
 
     /**
-     * Was: Eine beliebige Storefront-Seite ohne Kategorie im Geltungsbereich "Alle Seiten".
-     * Warum: Startseite, Suche und Produktdetailseite mit Cross-Selling haben keine Kategorie. Ohne
-     *        diesen Pfad bliebe "Alle Seiten" dort wirkungslos -- genau das soll er verhindern.
-     * Erwartet: aktiv.
+     * Startseite und Suche haben keine Kategorie; ohne den Seiten-Weg bliebe „Alle Seiten“ dort wirkungslos.
      */
     public function testEveryPageGetsTheScopeAllPages(): void
     {
-        $vorher = $this->geltungsbereichSetzen('all');
+        $previous = $this->setScope(LayoutScope::All->value);
 
         try {
             $page = new Page();
 
             $this->subscriber()->onGenericPageLoaded(
-                new GenericPageLoadedEvent($page, $this->salesChannelContext(), new Request())
+                new GenericPageLoadedEvent($page, $this->salesChannelContext(), new Request()),
             );
 
-            $erweiterung = $page->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
-            static::assertInstanceOf(ArrayStruct::class, $erweiterung);
-            static::assertTrue($erweiterung->get('active'));
+            $extension = $page->getExtension(ListingLayoutSubscriber::EXTENSION_NAME);
+            static::assertInstanceOf(ArrayStruct::class, $extension);
+            static::assertTrue($extension->get('active'));
         } finally {
-            $this->geltungsbereichSetzen($vorher);
+            $this->setScope($previous);
         }
     }
 
     /**
-     * Was: Dieselbe Seite im Standard-Geltungsbereich "Einzelne Kategorien".
-     * Warum: Hier darf der Seiten-Pfad nichts anfassen -- zuständig ist dann allein der
-     *        Kategorie-Pfad. Setzte er hier `false`, überschriebe er dessen Ergebnis.
-     * Erwartet: gar keine Erweiterung.
+     * Im Kategorie-Modus lässt der Seiten-Weg die Seite liegen. Setzte er `false`, überschriebe er das
+     * Ergebnis des Kategorie-Wegs.
      */
     public function testInCategoryModeThePagePathLeavesThePageAlone(): void
     {
         $page = new Page();
 
         $this->subscriber()->onGenericPageLoaded(
-            new GenericPageLoadedEvent($page, $this->salesChannelContext(), new Request())
+            new GenericPageLoadedEvent($page, $this->salesChannelContext(), new Request()),
         );
 
         static::assertNull($page->getExtension(ListingLayoutSubscriber::EXTENSION_NAME));
     }
 
-
     /**
-     * Was: `onController` legt die Entscheidung für eine Kategorie mit Merkmal am Request ab.
-     * Warum: **Das ist der Weg, über den die Vorlage sie überhaupt erfährt.** Beim Nachladen über
-     *        `/widgets/cms/navigation/{id}` steht in der Produkt-Box weder die Seite noch das
-     *        Listing-Ergebnis im Twig-Kontext, und `onListingResult` läuft dort gar nicht erst --
-     *        Shopware beantwortet die aufgelöste Kategorie-Seite aus dem Cache. Am 2026-07-30 auf
-     *        gegen echte Shopdaten nachgemessen.
-     * Erwartet: Der Request trägt danach `true`.
+     * Über den Request erfährt die Vorlage die Entscheidung auch beim Nachladen, wo weder Seite noch
+     * Listing-Ergebnis im Twig-Kontext stehen und Shopware die Kategorie-Seite aus dem Cache beantwortet.
      */
-    public function testDerControllerWegLegtDieEntscheidungAmRequestAb(): void
+    public function testControllerListenerStoresTheDecisionOnTheRequest(): void
     {
-        $request = $this->requestMitNavigation($this->createCategory(true));
+        $request = $this->requestWithNavigation($this->createCategory(true));
 
-        $this->subscriber()->onController($this->controllerEreignis($request));
+        $this->subscriber()->onController($this->controllerEvent($request));
 
         static::assertTrue(
             $request->attributes->get(ListingLayoutSubscriber::REQUEST_ATTRIBUTE),
-            'Ohne diesen Wert blättert der Kunde aus dem minimalistischen Layout heraus.'
+            'Ohne diesen Wert blättert der Kunde aus dem minimalistischen Layout heraus.',
         );
     }
 
     /**
-     * Was: Gegenprobe ohne Merkmal.
-     * Warum: Der Wert muss ausdrücklich `false` sein und nicht einfach fehlen.
-     * Erwartet: `false` am Request, nicht `null`.
+     * Der Wert ist ausdrücklich `false`, damit die Vorlage nicht auf die Seite zurückfällt.
      */
     public function testWithoutTheFlagTheRequestCarriesExplicitFalse(): void
     {
-        $request = $this->requestMitNavigation($this->createCategory(false));
+        $request = $this->requestWithNavigation($this->createCategory(false));
 
-        $this->subscriber()->onController($this->controllerEreignis($request));
+        $this->subscriber()->onController($this->controllerEvent($request));
 
         static::assertFalse($request->attributes->get(ListingLayoutSubscriber::REQUEST_ATTRIBUTE));
     }
 
     /**
-     * Was: Geltungsbereich „Alle Seiten" ohne jede Kategorie am Request.
-     * Warum: In diesem Modus darf der Weg die Datenbank nicht brauchen -- er läuft bei **jedem**
-     *        Storefront-Request, nicht nur auf Listings.
-     * Erwartet: `true`, obwohl keine `navigationId` gesetzt ist.
+     * Der Controller-Weg läuft bei jedem Storefront-Request; im Geltungsbereich „Alle Seiten“ darf er
+     * dafür keine Kategorie brauchen.
      */
     public function testScopeAllPagesNeedsNoCategoryAtTheController(): void
     {
-        $vorher = $this->geltungsbereichSetzen('all');
+        $previous = $this->setScope(LayoutScope::All->value);
 
         try {
-            $request = $this->requestMitNavigation(null);
+            $request = $this->requestWithNavigation(null);
 
-            $this->subscriber()->onController($this->controllerEreignis($request));
+            $this->subscriber()->onController($this->controllerEvent($request));
 
             static::assertTrue($request->attributes->get(ListingLayoutSubscriber::REQUEST_ATTRIBUTE));
         } finally {
-            $this->geltungsbereichSetzen($vorher);
+            $this->setScope($previous);
         }
     }
 
     /**
-     * Was: Ein Request ohne Verkaufskanal-Kontext -- so sehen Admin- und interne Aufrufe aus.
-     * Warum: Der Weg hängt am Kernel und läuft damit auch dort. Er darf dort nichts anfassen und
-     *        vor allem nicht mit einem Fehler aussteigen.
-     * Erwartet: kein Wert am Request, keine Ausnahme.
+     * Administration und interne Aufrufe haben keinen Verkaufskanal-Kontext. Der Weg hängt am Kernel und
+     * läuft auch dort; er darf dann nichts anfassen und keine Ausnahme werfen.
      */
     public function testWithoutSalesChannelContextNothingHappens(): void
     {
         $request = new Request();
-        $request->attributes->set('navigationId', $this->createCategory(true));
+        $request->attributes->set(self::NAVIGATION_ID_ATTRIBUTE, $this->createCategory(true));
 
-        $this->subscriber()->onController($this->controllerEreignis($request));
+        $this->subscriber()->onController($this->controllerEvent($request));
 
         static::assertNull($request->attributes->get(ListingLayoutSubscriber::REQUEST_ATTRIBUTE));
     }
 
-    private function createCategory(bool $merkmalAktiv, ?string $elternId = null): string
+    private function createCategory(bool $flagActive, ?string $parentId = null): string
     {
         $id = Uuid::randomHex();
 
-        $daten = [
+        $data = [
             'id' => $id,
-            'name' => 'Testkategorie ' . $id,
-            'customFields' => [self::CUSTOM_FIELD => $merkmalAktiv],
+            'name' => 'Test category ' . $id,
+            'customFields' => [LayoutDecision::CUSTOM_FIELD_KEY => $flagActive],
         ];
 
-        if ($elternId !== null) {
-            $daten['parentId'] = $elternId;
+        if ($parentId !== null) {
+            $data['parentId'] = $parentId;
         }
 
-        $this->kategorieRepository()->create([$daten], Context::createDefaultContext());
+        $this->categoryRepository()->create([$data], Context::createDefaultContext());
 
         return $id;
     }
 
     /**
-     * Setzt den Geltungsbereich und gibt den vorherigen Wert zurück, damit der Test ihn im
-     * `finally` wiederherstellen kann. Ohne das hängt das Ergebnis nachfolgender Tests davon ab,
-     * in welcher Reihenfolge sie laufen.
+     * Gibt den vorherigen Wert zurück, damit der Test ihn im `finally` wiederherstellt. Sonst hinge das
+     * Ergebnis der folgenden Tests von der zufälligen Reihenfolge ab.
      */
-    private function geltungsbereichSetzen(?string $value): ?string
+    private function setScope(?string $value): ?string
     {
-        $dienst = $this->systemConfigService();
-        $vorher = $dienst->get(self::CONFIG_KEY);
+        $systemConfigService = $this->systemConfigService();
+        $previous = $systemConfigService->get(LayoutDecision::CONFIG_KEY);
 
         if ($value === null) {
-            $dienst->delete(self::CONFIG_KEY);
+            $systemConfigService->delete(LayoutDecision::CONFIG_KEY);
         } else {
-            $dienst->set(self::CONFIG_KEY, $value);
+            $systemConfigService->set(LayoutDecision::CONFIG_KEY, $value);
         }
 
-        return \is_string($vorher) ? $vorher : null;
+        return \is_string($previous) ? $previous : null;
     }
 
     /**
-     * Baut ein leeres Listing-Ergebnis, schickt es durch den Subscriber und gibt es zurück.
-     * Die Kategorie kommt -- wie im Betrieb -- über `navigationId` am Request, damit der
-     * Datenbank-Weg des Subscribers wirklich durchlaufen wird.
+     * Die Kategorie kommt wie im Betrieb über `navigationId` am Request, damit der Subscriber sie
+     * tatsächlich aus der Datenbank lädt.
      */
     private function listingResultThroughSubscriber(?string $navigationId): ProductListingResult
     {
@@ -338,7 +295,7 @@ final class ListingLayoutSubscriberIntegrationTest extends TestCase
         $result = new ProductListingResult(
             'product',
             0,
-            new \Shopware\Core\Content\Product\ProductCollection([]),
+            new ProductCollection([]),
             null,
             new Criteria(),
             $context->getContext(),
@@ -346,7 +303,7 @@ final class ListingLayoutSubscriberIntegrationTest extends TestCase
 
         $request = new Request();
         if ($navigationId !== null) {
-            $request->attributes->set('navigationId', $navigationId);
+            $request->attributes->set(self::NAVIGATION_ID_ATTRIBUTE, $navigationId);
         }
 
         $this->subscriber()->onListingResult(new ProductListingResultEvent($request, $result, $context));
@@ -354,60 +311,54 @@ final class ListingLayoutSubscriberIntegrationTest extends TestCase
         return $result;
     }
 
-    /**
-     * Schickt eine Kategorie-Seite durch den Seitenaufruf-Pfad und gibt sie zurück.
-     */
-    private function navigationPageThroughSubscriber(string $kategorieId): NavigationPage
+    private function navigationPageThroughSubscriber(string $categoryId): NavigationPage
     {
         $context = $this->salesChannelContext();
 
-        $kategorie = $this->kategorieRepository()
-            ->search(new Criteria([$kategorieId]), $context->getContext())
+        $category = $this->categoryRepository()
+            ->search(new Criteria([$categoryId]), $context->getContext())
             ->first();
-        static::assertInstanceOf(CategoryEntity::class, $kategorie);
+        static::assertInstanceOf(CategoryEntity::class, $category);
 
         $page = new NavigationPage();
-        $page->setCategory($kategorie);
+        $page->setCategory($category);
 
         $this->subscriber()->onNavigationPageLoaded(
-            new NavigationPageLoadedEvent($page, $context, new Request())
+            new NavigationPageLoadedEvent($page, $context, new Request()),
         );
 
         return $page;
     }
 
     /**
-     * Der Subscriber wird selbst gebaut statt aus dem Container geholt: Symfony macht Dienste
-     * standardmäßig privat, und ein Subscriber wird nur über den Event-Dispatcher angesprochen --
-     * im Test-Container ist er deshalb nicht abrufbar. Seine beiden Abhängigkeiten kommen dagegen
-     * echt aus dem Container, samt echter Datenbank und echter Konfiguration.
+     * Symfony macht Dienste standardmäßig privat, und einen Subscriber spricht nur der Event-Dispatcher an;
+     * im Test-Container ist er deshalb nicht abrufbar. Seine beiden Abhängigkeiten kommen echt aus dem
+     * Container, samt Datenbank und Konfiguration.
      */
     private function subscriber(): ListingLayoutSubscriber
     {
         return new ListingLayoutSubscriber(
-            $this->kategorieRepository(),
+            $this->categoryRepository(),
             new LayoutDecision($this->systemConfigService()),
         );
     }
 
     private function salesChannelContext(): SalesChannelContext
     {
-        // Nicht auf die konkrete Klasse prüfen: Shopware legt einen Zwischenspeicher-Dekorator
-        // (CachedSalesChannelContextFactory) darum, sobald der Objekt-Cache aktiv ist. Die
-        // abstrakte Basis trägt beide Fälle und ist das, worauf es hier ankommt.
-        $factory = $this->getContainer()
-            ->get(\Shopware\Core\System\SalesChannel\Context\SalesChannelContextFactory::class);
-        static::assertInstanceOf(\Shopware\Core\System\SalesChannel\Context\AbstractSalesChannelContextFactory::class, $factory);
+        // Geprüft wird auf die abstrakte Basis: Ist der Objekt-Cache aktiv, legt Shopware einen
+        // Zwischenspeicher-Dekorator (CachedSalesChannelContextFactory) um die konkrete Klasse.
+        $factory = $this->getContainer()->get(SalesChannelContextFactory::class);
+        static::assertInstanceOf(AbstractSalesChannelContextFactory::class, $factory);
 
         return $factory->create(Uuid::randomHex(), $this->firstSalesChannel());
     }
 
     private function firstSalesChannel(): string
     {
-        $verbindung = $this->getContainer()->get(\Doctrine\DBAL\Connection::class);
-        static::assertInstanceOf(\Doctrine\DBAL\Connection::class, $verbindung);
+        $connection = $this->getContainer()->get(Connection::class);
+        static::assertInstanceOf(Connection::class, $connection);
 
-        $id = $verbindung->fetchOne('SELECT LOWER(HEX(id)) FROM sales_channel WHERE active = 1 LIMIT 1');
+        $id = $connection->fetchOne('SELECT LOWER(HEX(id)) FROM sales_channel WHERE active = 1 LIMIT 1');
 
         static::assertIsString($id, 'Kein aktiver Verkaufskanal in der Testdatenbank.');
 
@@ -415,10 +366,10 @@ final class ListingLayoutSubscriberIntegrationTest extends TestCase
     }
 
     /**
-     * Baut einen Request, wie ihn die Storefront liefert: mit aufgelöstem Verkaufskanal-Kontext und
-     * -- sofern vorhanden -- der Kategorie als Route-Parameter.
+     * Ein Request, wie ihn die Storefront liefert: mit aufgelöstem Verkaufskanal-Kontext und, falls
+     * angegeben, der Kategorie als Route-Parameter.
      */
-    private function requestMitNavigation(?string $navigationId): Request
+    private function requestWithNavigation(?string $navigationId): Request
     {
         $request = new Request();
         $request->attributes->set(
@@ -427,13 +378,13 @@ final class ListingLayoutSubscriberIntegrationTest extends TestCase
         );
 
         if ($navigationId !== null) {
-            $request->attributes->set('navigationId', $navigationId);
+            $request->attributes->set(self::NAVIGATION_ID_ATTRIBUTE, $navigationId);
         }
 
         return $request;
     }
 
-    private function controllerEreignis(Request $request): ControllerEvent
+    private function controllerEvent(Request $request): ControllerEvent
     {
         $kernel = $this->getContainer()->get('http_kernel');
         static::assertInstanceOf(HttpKernelInterface::class, $kernel);
@@ -446,8 +397,8 @@ final class ListingLayoutSubscriberIntegrationTest extends TestCase
         );
     }
 
-    /** @return EntityRepository<\Shopware\Core\Content\Category\CategoryCollection> */
-    private function kategorieRepository(): EntityRepository
+    /** @return EntityRepository<CategoryCollection> */
+    private function categoryRepository(): EntityRepository
     {
         $repository = $this->getContainer()->get('category.repository');
         static::assertInstanceOf(EntityRepository::class, $repository);
@@ -456,14 +407,13 @@ final class ListingLayoutSubscriberIntegrationTest extends TestCase
     }
 
     /**
-     * Der Konfigurationsdienst kommt untypisiert aus dem Container.
+     * Der Container liefert den Dienst untypisiert.
      */
     private function systemConfigService(): SystemConfigService
     {
-        $dienst = $this->getContainer()->get(SystemConfigService::class);
-        static::assertInstanceOf(SystemConfigService::class, $dienst);
+        $systemConfigService = $this->getContainer()->get(SystemConfigService::class);
+        static::assertInstanceOf(SystemConfigService::class, $systemConfigService);
 
-        return $dienst;
+        return $systemConfigService;
     }
-
 }
