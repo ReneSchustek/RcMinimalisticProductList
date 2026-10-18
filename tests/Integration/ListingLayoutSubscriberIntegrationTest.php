@@ -39,8 +39,8 @@ use Symfony\Component\HttpKernel\HttpKernelInterface;
  * Prüft die Wege, auf denen das Listing-Layout gesetzt wird (Controller, Seitenaufruf, Listing-Ergebnis,
  * jede Storefront-Seite), gegen eine echte Datenbank und einen echten Kernel.
  *
- * Der Nachlade-Weg lädt seine Kategorie selbst. Mit `Criteria::addFields()` lieferte der Hydrator dort
- * eine `PartialEntity` statt einer `CategoryEntity`, und die Erweiterung fehlte beim Filtern. Ein Mock
+ * Der Nachlade-Weg lädt seine Kategorie selbst. Mit `Criteria::addFields()` liefert der Hydrator dort
+ * eine `PartialEntity` statt einer `CategoryEntity`, und die Erweiterung fehlt beim Filtern. Ein Mock
  * gäbe weiterhin eine `CategoryEntity` zurück; nur die echte Datenbank zeigt den Fehler.
  */
 #[CoversClass(ListingLayoutSubscriber::class)]
