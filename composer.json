@@ -3,7 +3,7 @@
     "description": "Shows a minimalistic product list",
     "type": "shopware-platform-plugin",
     "version": "1.4.1",
-    "license": "MIT",
+    "license": "proprietary",
     "authors": [
         {
             "name": "Ruhrcoder (René Schustek)",

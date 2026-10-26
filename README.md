@@ -125,4 +125,4 @@ Entwickelt von [Ruhrcoder](https://ruhrcoder.de)
 
 ## Lizenz
 
-MIT, siehe [LICENSE](LICENSE).
+Proprietär – siehe [composer.json](composer.json).
